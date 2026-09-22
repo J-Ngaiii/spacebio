@@ -1,0 +1,47 @@
+name: ML Dev Template
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+  push:
+    branches:
+      - main
+  workflow_call:  # Allows other workflows to call this setup
+
+jobs:
+  Setup: 
+    runs-on: ubuntu-latest
+    steps:
+      # Setup
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11.8
+
+      - name: Cache Dependencies
+        id: CacheStep
+        uses: actions/cache@v3
+        env: 
+          cache-name: base-cache
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip
+
+      - name: Install Dependencies 
+        run: | 
+          pip install -r requirements.txt
+          pip install -e . 
+      
+      # Debugs
+      - name: Debug Check -> Disply Installed Packages
+        run: pip list
+
+      - name: Debug Check -> Disply Python Path
+        run: python -c "import sys; print(sys.path)"
+    
+      - name: Debug Check -> Confirm src is recognizeable # this one tends to bug so I want to have sys.path info before this runs if it fails
+        run: python -c "import src; print('src is recognized!')"

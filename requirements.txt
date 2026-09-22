@@ -1,0 +1,7 @@
+numpy
+pandas
+scipy
+pyarrow
+scikit-learn
+torch
+ipykernel
