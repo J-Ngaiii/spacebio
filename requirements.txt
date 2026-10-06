@@ -5,3 +5,6 @@ pyarrow
 scikit-learn
 torch
 ipykernel
+requests
+h5py
+pyarrow

@@ -15,6 +15,7 @@ class DataPrep:
 
     @classmethod
     def from_pretrained(cls, artifact: DataArtifact, standardizer: str = "default", **kwargs) -> DataArtifact:
+        # cls is like self, its a stand in for the class. 
         if not isinstance(artifact, DataArtifact):
             raise TypeError("DataPrep requires a DataArtifact.")
         if artifact.stage != "raw":
@@ -35,8 +36,8 @@ class DataPrep:
 
         # get the actual standardizer function
         transform: callable = getattr(preprocess, STANDARDIZERS[standardizer])
-        output = read_writer("preprocess", name)
-        transform(input_dir=Path(artifact.path), output_dir=output.path, **kwargs)
-        output.metadata = {**artifact.metadata, "standardizer": standardizer}
-        
+        raw_data = read_writer("preprocess", name, action="read", artifact=artifact, filename="metadata.json")
+        transformed_data = transform(raw_data, **kwargs)
+        output = read_writer("preprocess", name, action="write", artifact=artifact, data=transformed_data, filename="standardized.pkl")
+        output.metadata["standardizer"] = standardizer
         return output

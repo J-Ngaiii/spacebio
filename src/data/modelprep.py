@@ -26,8 +26,7 @@ class ModelPrep:
         if model_type not in MODELS:
             raise ValueError(f"Unknown model_type: {model_type!r}")
 
-        transform = getattr(preprocess, MODELS[model_type])
-
+        transform: callable = getattr(preprocess, MODELS[model_type])
         data = read_writer("model", name, action="read", artifact=artifact, filename=input_filename, model_name=model_type)
         transformed_data = transform(data, **kwargs)
         output = read_writer("model", name, action="write", artifact=artifact, data=transformed_data, filename=output_filename, model_name=model_type)

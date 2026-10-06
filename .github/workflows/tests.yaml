@@ -1,0 +1,44 @@
+name: SpaceBio tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install --no-deps -e .
+
+      - name: Display installed packages
+        run: python -m pip list
+
+      - name: Display Python path
+        run: python -c "import sys; print(sys.path)"
+
+      - name: Confirm src is importable
+        run: python -c "import src; print('src is recognized!')"
+
+      - name: Run tests
+        run: python scripts/test.py
