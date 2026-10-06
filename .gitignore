@@ -1,1 +1,7 @@
 mldevtemp.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pycache/
+*egg-info/
