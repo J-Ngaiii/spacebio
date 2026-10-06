@@ -41,4 +41,4 @@ jobs:
         run: python -c "import src; print('src is recognized!')"
 
       - name: Run tests
-        run: python scripts/test.py
+        run: python tests/test.py
