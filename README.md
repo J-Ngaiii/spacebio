@@ -1,6 +1,12 @@
 # ML Dev Template
 This repository is a basic template for a machine learning model developement repo. 
 
+# Data
+## RNA-Sec 
+RNA-Sec data is in the form of gene expressions represented as CSVs
+
+## Proteins
+Proteins will also CSVs but different CSVs per expriment with each experiment having varied features. For this set up we do not mix and aggregate information across protein CSVs.  
 # Setup
 For Python version, this repo requires at least Python 3.9 and strictly less than Python 3.12. You can do this by creating a conda enviornment:
 ```bash
