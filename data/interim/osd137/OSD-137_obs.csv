@@ -1,0 +1,19 @@
+sample_id,organism,has_ercc,organism_code,strain,tissue_code,arm_code,replicate,animal_id,tissue,arm,osd_id,mission,spacecraft,preservation_method,tmt_channel,tmt_plex
+Mmus_BAL-TAL_LVR_BSL_Rep1_B1,Mus musculus,False,Mmus,BAL-TAL,LVR,BSL,1,B1,liver,Basal,OSD-137,RR-3,SpaceX-8,,129C,plex_1
+Mmus_BAL-TAL_LVR_BSL_Rep2_B2,Mus musculus,False,Mmus,BAL-TAL,LVR,BSL,2,B2,liver,Basal,OSD-137,RR-3,SpaceX-8,,130N,plex_1
+Mmus_BAL-TAL_LVR_BSL_Rep3_B3,Mus musculus,False,Mmus,BAL-TAL,LVR,BSL,3,B3,liver,Basal,OSD-137,RR-3,SpaceX-8,,130C,plex_1
+Mmus_BAL-TAL_LVR_BSL_Rep4_B4,Mus musculus,False,Mmus,BAL-TAL,LVR,BSL,4,B4,liver,Basal,OSD-137,RR-3,SpaceX-8,,129C,plex_2
+Mmus_BAL-TAL_LVR_BSL_Rep5_B6,Mus musculus,False,Mmus,BAL-TAL,LVR,BSL,5,B6,liver,Basal,OSD-137,RR-3,SpaceX-8,,130N,plex_2
+Mmus_BAL-TAL_LVR_BSL_Rep6_B7,Mus musculus,False,Mmus,BAL-TAL,LVR,BSL,6,B7,liver,Basal,OSD-137,RR-3,SpaceX-8,,130C,plex_2
+Mmus_BAL-TAL_LVR_GC_Rep1_G1,Mus musculus,False,Mmus,BAL-TAL,LVR,GC,1,G1,liver,Ground.Control,OSD-137,RR-3,SpaceX-8,,126,plex_1
+Mmus_BAL-TAL_LVR_GC_Rep2_G2,Mus musculus,False,Mmus,BAL-TAL,LVR,GC,2,G2,liver,Ground.Control,OSD-137,RR-3,SpaceX-8,,127N,plex_1
+Mmus_BAL-TAL_LVR_GC_Rep3_G3,Mus musculus,False,Mmus,BAL-TAL,LVR,GC,3,G3,liver,Ground.Control,OSD-137,RR-3,SpaceX-8,,127C,plex_1
+Mmus_BAL-TAL_LVR_GC_Rep4_G5,Mus musculus,False,Mmus,BAL-TAL,LVR,GC,4,G5,liver,Ground.Control,OSD-137,RR-3,SpaceX-8,,126,plex_2
+Mmus_BAL-TAL_LVR_GC_Rep5_G6,Mus musculus,False,Mmus,BAL-TAL,LVR,GC,5,G6,liver,Ground.Control,OSD-137,RR-3,SpaceX-8,,127N,plex_2
+Mmus_BAL-TAL_LVR_GC_Rep6_G7,Mus musculus,False,Mmus,BAL-TAL,LVR,GC,6,G7,liver,Ground.Control,OSD-137,RR-3,SpaceX-8,,127C,plex_2
+Mmus_BAL-TAL_LVR_FLT_Rep1_F1,Mus musculus,False,Mmus,BAL-TAL,LVR,FLT,1,F1,liver,Flight,OSD-137,RR-3,SpaceX-8,,128N,plex_1
+Mmus_BAL-TAL_LVR_FLT_Rep2_F2,Mus musculus,False,Mmus,BAL-TAL,LVR,FLT,2,F2,liver,Flight,OSD-137,RR-3,SpaceX-8,,128C,plex_1
+Mmus_BAL-TAL_LVR_FLT_Rep3_F3,Mus musculus,False,Mmus,BAL-TAL,LVR,FLT,3,F3,liver,Flight,OSD-137,RR-3,SpaceX-8,,129N,plex_1
+Mmus_BAL-TAL_LVR_FLT_Rep4_F4,Mus musculus,False,Mmus,BAL-TAL,LVR,FLT,4,F4,liver,Flight,OSD-137,RR-3,SpaceX-8,,128N,plex_2
+Mmus_BAL-TAL_LVR_FLT_Rep5_F5,Mus musculus,False,Mmus,BAL-TAL,LVR,FLT,5,F5,liver,Flight,OSD-137,RR-3,SpaceX-8,,128C,plex_2
+Mmus_BAL-TAL_LVR_FLT_Rep6_F6,Mus musculus,False,Mmus,BAL-TAL,LVR,FLT,6,F6,liver,Flight,OSD-137,RR-3,SpaceX-8,,129N,plex_2
