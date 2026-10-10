@@ -12,36 +12,53 @@ from sklearn.model_selection import cross_val_score
 
 STUDY_ID = sys.argv[1] if len(sys.argv) > 1 else "OSD-105"
 
+# Studies with no per-sample protein matrix (see DATA_LIMITS in script 04):
+# assemble RNA-only AnnData, skip the protein modality.
+NO_PROTEIN_STUDIES = {"OSD-48"}
+
 OUT = Path(__file__).resolve().parent.parent / "output"
 
 obs = pd.read_csv(OUT / f"{STUDY_ID}_obs.csv").set_index("sample_id")
 var = pd.read_csv(OUT / f"{STUDY_ID}_var.csv").set_index("ensembl_id")
 counts = pd.read_csv(OUT / f"{STUDY_ID}_expression_counts.csv", index_col=0)
-protein = pd.read_csv(OUT / f"{STUDY_ID}_protein_matrix.csv", index_col=[0, 1])
 
 adata = ad.AnnData(
     X=counts.T.values,       # AnnData convention: samples are rows
     obs=obs,
     var=var,
 )
-adata.obsm["protein"] = protein.T.values
+
+if STUDY_ID in NO_PROTEIN_STUDIES:
+    print(f"NOTE: [{STUDY_ID}] no per-sample protein matrix (pool-level processed "
+          f"proteomics only) -- assembled RNA-only")
+else:
+    # Script 04 saves a (gene_symbol, tmt_plex) MultiIndex
+    protein = pd.read_csv(OUT / f"{STUDY_ID}_protein_matrix.csv", index_col=[0, 1])
+    # Align protein columns to obs row order before transposing: script 04
+    # guarantees the same ID set, but ISA channel order differs from runsheet
+    # order, and obsm rows must match obs rows exactly.
+    missing = set(adata.obs_names) - set(protein.columns)
+    if missing:
+        raise ValueError(f"protein matrix missing samples: {sorted(missing)}")
+    protein = protein.reindex(columns=adata.obs_names)
+    adata.obsm["protein"] = protein.T.values  # paired modality, rows aligned with obs
+    print(f"  paired protein modality: {adata.obsm['protein'].shape}")
 
 print(f"[{STUDY_ID}] AnnData assembled: {adata.shape[0]} samples x {adata.shape[1]} genes")
-print(f"  paired protein modality: {adata.obsm['protein'].shape}")
 
 y = (adata.obs["arm"] == "Flight").astype(int)
 
 if y.isna().any():
-    raise ValueError("Label column has NaNs — arm mapping failed for some samples")
+    raise ValueError("Label column has NaNs -- arm mapping failed for some samples")
 if y.nunique() < 2:
-    raise ValueError("Only one class present — check tissue/arm filtering upstream")
+    raise ValueError("Only one class present -- check tissue/arm filtering upstream")
 
 scores = cross_val_score(
     LogisticRegression(max_iter=1000), adata.X, y, cv=3, scoring="roc_auc"
 )
 print(f"Frozen linear probe (raw counts, sanity check only): AUROC scores = {scores}")
-print("\nSanity-level number only: 12 samples, 6v6 labels, raw counts, no normalization.")
-print("Its job is proving the schema assembles and a classifier runs — not benchmarking.")
+print("Sanity-level number only: 12 samples, 6v6 labels, raw counts, no normalization.")
+print("Its job is proving the schema assembles and a classifier runs -- not benchmarking.")
 
 # --- Column-level provenance: every column in every table, where it came
 # from, and what it does. ---
@@ -55,7 +72,7 @@ COLUMN_ANNOTATIONS = [
     ("obs", "strain", "parsed from sample_id by script 01 regex", "Mouse strain token (C57-6J = C57BL/6J)."),
     ("obs", "tissue_code", "parsed from sample_id by script 01 regex", "Raw tissue abbreviation from the sample name (TA/GST/KDN)."),
     ("obs", "arm_code", "parsed from sample_id by script 01 regex", "Raw mission-arm abbreviation from the sample name (FLT/GC)."),
-    ("obs", "replicate", "parsed from sample_id by script 01 regex", "Replicate number within arm (1-6). Note: NOT the animal number — Rep1 maps to M23 in FLT but M33 in GC."),
+    ("obs", "replicate", "parsed from sample_id by script 01 regex", "Replicate number within arm (1-6). Note: NOT the animal number -- Rep1 maps to M23 in FLT but M33 in GC."),
     ("obs", "animal_id", "script 01: animal_prefix + parsed digits", "Individual animal identifier (M23-M38). The join key between RNA and protein assays of the same animal."),
     ("obs", "tissue", "script 01: TISSUE_MAP lookup on tissue_code", "Standardized tissue name. Use this, not tissue_code, for cross-study pooling."),
     ("obs", "arm", "script 01: ARM_MAP lookup, cross-checked against runsheet Factor Value[Spaceflight]",
@@ -83,11 +100,11 @@ COLUMN_ANNOTATIONS = [
     ("expression_counts", "(columns = sample_id)", "GLDS RSEM Unnormalized Counts CSV",
      "Raw (unnormalized, unfiltered) gene-level counts. Rows = var.ensembl_id, columns = obs.sample_id. Normalization is deliberately left downstream."),
     ("protein_matrix", "(index = gene_symbol, tmt_plex)", "TargetProtein.txt ratio columns, via script 04",
-     "TMT reporter-ion ratio to the 131 reference channel (a pool of all 12 animals — so values are relative to the cohort mean, not to a control animal). One row per gene per plex: a gene quantified in both plexes has two rows, because plex is a batch effect."),
+     "TMT reporter-ion ratio to the 131 reference channel (a pool of all 12 animals -- so values are relative to the cohort mean, not to a control animal). One row per gene per plex: a gene quantified in both plexes has two rows, because plex is a batch effect."),
     ("protein_matrix", "(columns = sample_id)", "script 04: ISA channel map",
      "Same sample_ids as obs/expression. Values for the 6 samples NOT in that row's plex are structurally NA (that channel was not labeled in that plex)."),
 ]
 ann = pd.DataFrame(COLUMN_ANNOTATIONS, columns=["table", "column_or_axis", "source", "description"])
 ann.to_csv(OUT / f"{STUDY_ID}_column_annotations.csv", index=False)
 adata.uns["column_provenance"] = ann.to_dict("list")
-print(f"\ncolumn annotations: {len(ann)} entries -> {STUDY_ID}_column_annotations.csv")
+print(f"column annotations: {len(ann)} entries -> {STUDY_ID}_column_annotations.csv")
