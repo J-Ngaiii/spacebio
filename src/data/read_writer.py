@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 import json
 import pickle
+import pandas as pd
 
 from src.config.config import DATASETS, MODELS
 from src.data.artifact import DataArtifact
@@ -15,7 +16,7 @@ def _dataset_dir(stage: str, dataset_name: str) -> Path:
     return DATA_ROOT / stage / dataset_name
 
 
-def read_writer(operation: str, dataset_name: str, *, action: str = "write", data: Any = None, filename: str | None = None, model_name: str | None = None, artifact: DataArtifact | None = None) -> Any:
+def read_writer(operation: str, dataset_name: str, *, action: str = "write", data: Any = None, filename: str | None = None, model_name: str | None = None, artifact: DataArtifact | None = None, read_writer_kwargs: dict[str, Any] | None = None) -> Any:
     """Read stage inputs or save stage outputs and return a DataArtifact."""
     operation = normalize_name(operation)
     action = normalize_name(action)
@@ -63,7 +64,7 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
             raise ValueError("Artifact name does not match dataset_name.")
         if artifact.stage != input_stage:
             raise ValueError(f"Expected stage={input_stage!r}, received {artifact.stage!r}.")
-        metadata = {**artifact.metadata, **metadata} # when we match to a model, we need to udpate the artifact metadata
+        
 
     if action == "read":
         if input_stage is None:
@@ -73,20 +74,22 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
             input_dir = Path(artifact.path) 
         else:
             input_dir = _dataset_dir(input_stage, dataset_name)
-        return _read(input_dir / filename)
+        return _read(input_dir / filename, **read_writer_kwargs or {})
     else:
         output_dir.mkdir(parents=True, exist_ok=True)
-        _write(data, output_dir / filename)
+        _write(data, output_dir / filename, **read_writer_kwargs or {})
 
     return DataArtifact(name=dataset_name, stage=output_stage, path=output_dir, metadata=metadata)
 
 
-def _read(path: Path) -> Any:
+def _read(path: Path, **kwargs) -> Any:
     """Select a loader using the file extension."""
     match path.suffix.lower():
+        case ".csv":
+            return pd.read_csv(path, encoding="utf-8", **kwargs)
         case ".json":
             with path.open("r", encoding="utf-8") as stream:
-                return json.load(stream)
+                return json.load(stream, **kwargs)
         case ".txt":
             return path.read_text(encoding="utf-8")
         case ".pkl" | ".pickle":
@@ -98,22 +101,22 @@ def _read(path: Path) -> Any:
             raise ValueError(f"No reader registered for extension: {path.suffix!r}")
 
 
-def _write(data: Any, path: Path) -> None:
+def _write(data: Any, path: Path, **kwargs) -> None:
     """Select a serializer using the file extension."""
     match path.suffix.lower():
         case ".json":
             with path.open("w", encoding="utf-8") as stream:
-                json.dump(data, stream, indent=2)
+                json.dump(data, stream, indent=2, **kwargs)
         case ".txt":
             if not isinstance(data, str):
                 raise TypeError("Writing .txt requires a string.")
-            path.write_text(data, encoding="utf-8")
+            path.write_text(data, encoding="utf-8", **kwargs)
         case ".pkl" | ".pickle":
             with path.open("wb") as stream:
-                pickle.dump(data, stream)
+                pickle.dump(data, stream, **kwargs)
         case ".bin":
             if not isinstance(data, bytes):
                 raise TypeError("Writing .bin requires bytes.")
-            path.write_bytes(data)
+            path.write_bytes(data, **kwargs)
         case _:
             raise ValueError(f"No writer registered for extension: {path.suffix!r}")

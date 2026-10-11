@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 *.pycache/
 *egg-info/**/raw/
+*egg*
 .DS_Store
 *.h5ad
 *_expression_counts.csv

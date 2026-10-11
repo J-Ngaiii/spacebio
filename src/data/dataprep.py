@@ -1,43 +1,51 @@
+from collections.abc import Iterable
 from pathlib import Path
 
-from src.config.config import DATASETS, STANDARDIZERS
+from src.config.config import BATCHPROCESSING_SETTINGS, DATASETS, STANDARDIZERS
 from src.data import preprocess
 from src.data.artifact import DataArtifact
 from src.data.read_writer import read_writer
-from src.utils import normalize_name
+from src.utils import normalize_name, select_batch
 
 
 class DataPrep:
-    """Resolve a registered transformation and return its output artifact."""
+    """Standardize one raw artifact or a configured batch of raw artifacts."""
 
     def __init__(self, *args, **kwargs):
-        raise TypeError("Use DataPrep.from_pretrained(...).")
+        raise TypeError("Use DataPrep.from_pretrained(...) or DataPrep.from_batch(...).")
 
     @classmethod
     def from_pretrained(cls, artifact: DataArtifact, standardizer: str = "default", **kwargs) -> DataArtifact:
-        # cls is like self, its a stand in for the class. 
         if not isinstance(artifact, DataArtifact):
             raise TypeError("DataPrep requires a DataArtifact.")
         if artifact.stage != "raw":
             raise ValueError(f"DataPrep requires stage='raw', received {artifact.stage!r}.")
-        
-        name: str = normalize_name(artifact.name)
+
+        name = normalize_name(artifact.name)
         if name not in DATASETS:
             raise ValueError(f"Unknown dataset: {name!r}")
-        elif not Path(artifact.path).is_dir():
+        if not Path(artifact.path).is_dir():
             raise FileNotFoundError(artifact.path)
 
-        # identify the standardizer we want based on dataset name 
-        standardizer: str = normalize_name(standardizer)
+        standardizer = normalize_name(standardizer)
         if standardizer == "default":
             standardizer = normalize_name(DATASETS[name]["standardizer"])
-        elif standardizer not in STANDARDIZERS:
+        if standardizer not in STANDARDIZERS:
             raise ValueError(f"Unknown standardizer: {standardizer!r}")
 
-        # get the actual standardizer function
-        transform: callable = getattr(preprocess, STANDARDIZERS[standardizer])
-        raw_data = read_writer("preprocess", name, action="read", artifact=artifact, filename="metadata.json")
+        transform = getattr(preprocess, STANDARDIZERS[standardizer])
+        settings = artifact.metadata.get(artifact.stage, {})
+        reader_options, writer_options =  dict(settings.get("reader_dict", {})), dict(settings.get("writer_dict", {}))
+        input_filename = reader_options.pop("filenames", "metadata.json")
+        output_filename = writer_options.pop("filenames", "standardized.pkl")
+
+        raw_data = read_writer("preprocess", name, action="read", artifact=artifact, filename=input_filename, read_writer_kwargs=reader_options)
         transformed_data = transform(raw_data, **kwargs)
-        output = read_writer("preprocess", name, action="write", artifact=artifact, data=transformed_data, filename="standardized.pkl")
+        output = read_writer("preprocess", name, action="write", artifact=artifact, data=transformed_data, filename=output_filename, read_writer_kwargs=writer_options)
         output.metadata["standardizer"] = standardizer
+
         return output
+
+    @classmethod
+    def from_batch(cls, artifacts: Iterable[DataArtifact], standardizer: str = "default", **kwargs) -> tuple[DataArtifact, ...]:
+        return tuple(cls.from_pretrained(artifact, standardizer=standardizer, **kwargs) for artifact in artifacts)

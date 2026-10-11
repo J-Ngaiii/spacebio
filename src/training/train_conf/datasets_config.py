@@ -4,11 +4,16 @@
 from dataclasses import dataclass
 
 @dataclass
+class anndata_dataset:
+    dataset: str = "anndata_dataset"
+    train_split: str = "train"
+    test_split: str = "test"
+
+@dataclass
 class example_dataset:
     dataset: str =  "example_dataset"
     train_split: str = "train"
     test_split: str = "validation"
-
 
 @dataclass
 class grammar_dataset:

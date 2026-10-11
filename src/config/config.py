@@ -1,24 +1,68 @@
 # eveytime we add a dataset we instantiate a standardizer and source
 
-DATASETS = {
-    "osdr-114": {
-        "source": "nasa",
-        "standardizer": "osdr",
-    },
-    "archs4-a": {
-        "source": "archs4",
-        "standardizer": "archs4",
-    },
+BATCHPROCESSING_SETTINGS = {
+    "raw": ("osd-105", "osd-101", "osd-102", "osd-137", "osd-48"),
+    "interim": ("osd-105", "osd-101", "osd-102", "osd-137", "osd-48"),
 }
+
+def osdr_dataset_config(study_id: str, tissue: str) -> dict:
+    return {
+        "source": "nasa",
+        "study_id": study_id,
+        "standardizer": "osdr",
+        "metadata": {
+            "type": tissue,
+            "raw": {
+                "reader_dict": {
+                    "filenames": (
+                        f"{study_id}_expression_counts.csv",
+                        f"{study_id}_obs.csv",
+                        f"{study_id}_protein_matric.csv",
+                        f"{study_id}_var.csv",
+                    ),
+                },
+                "writer_dict": {
+                    "filenames": "standardized.pkl",
+                },
+            },
+            "interim": {
+                "reader_dict": {
+                    "filenames": "standardized.pkl",
+                },
+                "writer_dict": {
+                    "filenames": "model_data.pkl",
+                },
+            },
+        },
+    }
+
+
+DATASETS = {
+    "osd-105": osdr_dataset_config("OSD-105", "tibialis anterior"),
+    "osd-101": osdr_dataset_config("OSD-101", "gastrocnemius"),
+    "osd-102": osdr_dataset_config("OSD-102", "kidney"),
+    "osd-137": osdr_dataset_config("OSD-137", "liver"),
+    "osd-48": osdr_dataset_config("OSD-48", "liver"),
+}
+
 STANDARDIZERS = {
     "osdr": "standardize_osdr",
     "archs4": "standardize_archs4",
 }
+
 MODELS = {
-    "scgpt-lora": "prep_scgpt_lora",
-    "scgpt-deepattn": "prep_scgpt_deepattn",
-    "pca": "prep_pca",
-    "single-hyena": "prep_single_hyena",
+    "scgpt-lora": {
+        "cleaner": "prep_scgpt_lora"
+    },
+    "scgpt-deepattn": {
+        "cleaner": "prep_scgpt_deepattn"
+    },
+    "pca": {
+        "cleaner": "prep_pca"
+    },
+    "single-hyena": {
+        "cleaner": "prep_single_hyena"
+    },
 }
 
 # Phase 0: Curling Raw Data from APIs

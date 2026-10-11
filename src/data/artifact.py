@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
-
+from typing import Any, Iterable
 
 @dataclass
 class DataArtifact:
@@ -9,3 +8,5 @@ class DataArtifact:
     stage: str
     path: Path
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    
