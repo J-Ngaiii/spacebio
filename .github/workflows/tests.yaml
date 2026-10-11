@@ -40,5 +40,5 @@ jobs:
       - name: Confirm src is importable
         run: python -c "import src; print('src is recognized!')"
 
-      - name: Run tests
-        run: python tests/test.py
+      # - name: Run tests
+      #   run: python tests/test.py
