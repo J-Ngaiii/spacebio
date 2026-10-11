@@ -16,7 +16,7 @@ def _dataset_dir(stage: str, dataset_name: str) -> Path:
     return DATA_ROOT / stage / dataset_name
 
 
-def read_writer(operation: str, dataset_name: str, *, action: str = "write", data: Any = None, filename: str | None = None, model_name: str | None = None, artifact: DataArtifact | None = None, read_writer_kwargs: dict[str, Any] | None = None) -> Any:
+def read_writer(operation: str, dataset_name: str, *, action: str = "write", data: Any = None, filename: str | tuple[str, ...] | list[str] | None = None, model_name: str | None = None, artifact: DataArtifact | None = None, read_writer_kwargs: dict[str, Any] | None = None) -> Any:
     """Read stage inputs or save stage outputs and return a DataArtifact."""
     operation = normalize_name(operation)
     action = normalize_name(action)
@@ -26,8 +26,13 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
         raise ValueError(f"Unknown dataset: {dataset_name!r}")
     if action not in {"read", "write"}:
         raise ValueError(f"Unknown action: {action!r}")
-    if not filename or Path(filename).name != filename or filename in {".", ".."}:
-        raise ValueError("A plain filename is required.")
+    filenames = (filename,) if isinstance(filename, str) else tuple(filename or ())
+    if not filenames or any(not isinstance(name, str) or not name or Path(name).name != name or name in {".", ".."} or "\\" in name for name in filenames):
+        raise ValueError("Plain filenames are required.")
+    if len(set(filenames)) != len(filenames):
+        raise ValueError("Filenames must be unique.")
+    if action == "write" and not isinstance(filename, str):
+        raise ValueError("Writing requires a single filename.")
 
     metadata = {}
 
@@ -55,7 +60,19 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
 
             output_dir = _dataset_dir(output_stage, dataset_name) / model_name
             metadata["model_type"] = model_name
+        case "train":
+            input_stage = "processed"
+            output_stage = "predictions"
 
+            if model_name is None:
+                raise ValueError("model_name required for training.")
+
+            model_name = normalize_name(model_name)
+            if model_name not in MODELS:
+                raise ValueError(f"Unknown model type: {model_name!r}")
+
+            output_dir = _dataset_dir(output_stage, dataset_name) / model_name
+            metadata["model_type"] = model_name
         case _:
             raise ValueError(f"Unknown operation: {operation!r}")
 
@@ -64,6 +81,7 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
             raise ValueError("Artifact name does not match dataset_name.")
         if artifact.stage != input_stage:
             raise ValueError(f"Expected stage={input_stage!r}, received {artifact.stage!r}.")
+        metadata = {**artifact.metadata, **metadata}
         
 
     if action == "read":
@@ -74,7 +92,9 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
             input_dir = Path(artifact.path) 
         else:
             input_dir = _dataset_dir(input_stage, dataset_name)
-        return _read(input_dir / filename, **read_writer_kwargs or {})
+        if isinstance(filename, str):
+            return _read(input_dir / filename, **read_writer_kwargs or {})
+        return {name: _read(input_dir / name, **read_writer_kwargs or {}) for name in filenames}
     else:
         output_dir.mkdir(parents=True, exist_ok=True)
         _write(data, output_dir / filename, **read_writer_kwargs or {})

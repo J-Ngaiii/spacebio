@@ -63,6 +63,9 @@ MODELS = {
     "single-hyena": {
         "cleaner": "prep_single_hyena"
     },
+    "logreg": {
+        "cleaner": "prep_logreg",
+    },
 }
 
 # Phase 0: Curling Raw Data from APIs

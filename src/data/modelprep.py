@@ -4,7 +4,7 @@ from src.config.config import BATCHPROCESSING_SETTINGS, DATASETS, MODELS
 from src.data import preprocess
 from src.data.artifact import DataArtifact
 from src.data.read_writer import read_writer
-from src.utils import normalize_name, select_batch
+from src.utils import normalize_name
 
 
 class ModelPrep:
@@ -14,7 +14,7 @@ class ModelPrep:
         raise TypeError("Use ModelPrep.from_pretrained(...) or ModelPrep.from_batch(...).")
 
     @classmethod
-    def from_pretrained(cls, artifact: DataArtifact, model_type: str, *, input_filename: str | None = None, output_filename: str | None = None, **kwargs) -> DataArtifact:
+    def from_pretrained(cls, artifact: DataArtifact, model_type: str, *, input_filename: str | tuple[str, ...] | None = None, output_filename: str | None = None, **kwargs) -> DataArtifact:
         if not isinstance(artifact, DataArtifact):
             raise TypeError("ModelPrep requires a DataArtifact.")
         if artifact.stage != "interim":
@@ -43,5 +43,5 @@ class ModelPrep:
         return output
 
     @classmethod
-    def from_batch(cls, artifacts: Iterable[DataArtifact], model_type: str, *, input_filename: str | None = None, output_filename: str | None = None, **kwargs) -> tuple[DataArtifact, ...]:
+    def from_batch(cls, artifacts: Iterable[DataArtifact], model_type: str, *, input_filename: str | tuple[str, ...] | None = None, output_filename: str | None = None, **kwargs) -> tuple[DataArtifact, ...]:
         return tuple(cls.from_pretrained(artifact, model_type=model_type, input_filename=input_filename, output_filename=output_filename, **kwargs) for artifact in artifacts)

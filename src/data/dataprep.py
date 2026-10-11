@@ -5,7 +5,7 @@ from src.config.config import BATCHPROCESSING_SETTINGS, DATASETS, STANDARDIZERS
 from src.data import preprocess
 from src.data.artifact import DataArtifact
 from src.data.read_writer import read_writer
-from src.utils import normalize_name, select_batch
+from src.utils import normalize_name
 
 
 class DataPrep:
