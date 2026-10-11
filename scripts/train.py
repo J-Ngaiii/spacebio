@@ -12,11 +12,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data.artifact import DataArtifact
-from src.data.interim import load_interim_artifact
 from src.data.modelprep import ModelPrep
 from src.data.read_writer import read_writer
 
 
+# REFACTOR
 TRAINERS = {
     "logreg": {
         "config_module": "src.training.train_conf.logreg_config",
@@ -81,7 +81,7 @@ def run_pipeline(model_name: str, dataset: str, *, data_dir: Path | None = None,
     train_module = importlib.import_module(settings["train_module"])
     train_function = getattr(train_module, settings["train_function"])
 
-    source = load_interim_artifact(dataset, data_dir)
+    source = #TODO
     processed = ModelPrep.from_pretrained(source, model_name, input_filename=tuple(source.metadata["input_files"]), output_filename="assembled.pkl")
     adata = read_writer("train", source.name, action="read", artifact=processed, filename="assembled.pkl", model_name=model_name)
 

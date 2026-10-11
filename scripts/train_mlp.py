@@ -5,14 +5,13 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data.interim import load_interim_artifact
 from src.data.modelprep import ModelPrep
 from src.data.read_writer import read_writer
 from src.training.train.mlp_train import train_mlp
 from src.training.train_conf.mlp_config import mlp_train_config
 
 def run_pipeline(dataset: str = "OSD-105", *, data_dir: Path | None = None, config: mlp_train_config | None = None):
-    source = load_interim_artifact(dataset, data_dir)
+    source = #TODO
     processed = ModelPrep.from_pretrained(source, "simple-mlp", input_filename=tuple(source.metadata["input_files"]), output_filename="assembled.pkl")
     adata = read_writer("train", source.name, action="read", artifact=processed, filename="assembled.pkl", model_name="simple-mlp")
     result = train_mlp(adata, config)
