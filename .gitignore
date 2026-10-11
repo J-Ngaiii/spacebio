@@ -4,4 +4,8 @@ __pycache__/
 *.pyo
 *.pyd
 *.pycache/
-*egg-info/
+*egg-info/**/raw/
+.DS_Store
+*.h5ad
+*_expression_counts.csv
+__pycache__/
