@@ -61,14 +61,12 @@ def prep_logreg(data: dict[str, pd.DataFrame], *, include_protein: bool = True, 
         raise ValueError("Raw RNA counts contain negative values.")
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
-
     if include_protein:
         protein = find_table(("_protein_matrix.csv", "_protein_matric.csv"), required=False)
         if protein is not None:
             protein = protein.set_index(list(protein.columns[:2]))
             if not protein.columns.is_unique:
                 raise ValueError("Protein sample identifiers must be unique.")
-            # Protein groups can share a gene/plex key; preserve every measured row.
 
             missing = set(obs.index) - set(protein.columns)
             if missing:

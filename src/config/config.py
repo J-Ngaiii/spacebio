@@ -66,6 +66,9 @@ MODELS = {
     "logreg": {
         "cleaner": "prep_logreg",
     },
+    "simple-mlp": {
+        "cleaner": "prep_simple_mlp"
+    }
 }
 
 # Phase 0: Curling Raw Data from APIs
