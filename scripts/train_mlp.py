@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import sys
+from turtle import pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -12,14 +13,12 @@ from src.training.train_conf.mlp_config import mlp_train_config
 
 
 def run_pipeline(dataset: str = "OSD-105", *, data_dir: Path | None = None, config: mlp_train_config | None = None):
-    source = #TODO
-    processed = ModelPrep.from_pretrained(source, "simple-mlp", input_filename=tuple(source.metadata["input_files"]), output_filename="assembled.pkl")
-    adata = read_writer("train", source.name, action="read", artifact=processed, filename="assembled.pkl", model_name="simple-mlp")
+    adata = pd.read_csv(f"data/processed/mlp/{dataset}")
     result = train_mlp(adata, config)
-    output = read_writer("train", source.name, artifact=processed, data=result, filename="mlp_results.pkl", model_name="simple-mlp")
+    # save results in predictions
     print(f"CV AUROC: {result['metrics']['cv_scores']}; saved {output.path / 'mlp_results.pkl'}")
     print("RNA-only schema probe; these small-sample scores are not a benchmark.")
-    return output
+    return 
 
 
 def main():

@@ -1,0 +1,13 @@
+sample_id,organism,has_ercc,organism_code,strain,tissue_code,arm_code,replicate,animal_id,tissue,arm,osd_id,mission,spacecraft,preservation_method,tmt_channel,tmt_plex
+Mmus_C57-6J_TA_GC_Rep1_M33,Mus musculus,False,Mmus,C57-6J,TA,GC,1,M33,tibialis_anterior,Ground.Control,OSD-105,RR-1,SpaceX-4,,128N,plex_1
+Mmus_C57-6J_TA_GC_Rep2_M34,Mus musculus,False,Mmus,C57-6J,TA,GC,2,M34,tibialis_anterior,Ground.Control,OSD-105,RR-1,SpaceX-4,,128C,plex_1
+Mmus_C57-6J_TA_GC_Rep3_M35,Mus musculus,False,Mmus,C57-6J,TA,GC,3,M35,tibialis_anterior,Ground.Control,OSD-105,RR-1,SpaceX-4,,129N,plex_1
+Mmus_C57-6J_TA_GC_Rep4_M36,Mus musculus,False,Mmus,C57-6J,TA,GC,4,M36,tibialis_anterior,Ground.Control,OSD-105,RR-1,SpaceX-4,,128N,plex_2
+Mmus_C57-6J_TA_GC_Rep5_M37,Mus musculus,False,Mmus,C57-6J,TA,GC,5,M37,tibialis_anterior,Ground.Control,OSD-105,RR-1,SpaceX-4,,128C,plex_2
+Mmus_C57-6J_TA_GC_Rep6_M38,Mus musculus,False,Mmus,C57-6J,TA,GC,6,M38,tibialis_anterior,Ground.Control,OSD-105,RR-1,SpaceX-4,,129N,plex_2
+Mmus_C57-6J_TA_FLT_Rep1_M23,Mus musculus,False,Mmus,C57-6J,TA,FLT,1,M23,tibialis_anterior,Flight,OSD-105,RR-1,SpaceX-4,,126,plex_1
+Mmus_C57-6J_TA_FLT_Rep2_M24,Mus musculus,False,Mmus,C57-6J,TA,FLT,2,M24,tibialis_anterior,Flight,OSD-105,RR-1,SpaceX-4,,127N,plex_1
+Mmus_C57-6J_TA_FLT_Rep3_M25,Mus musculus,False,Mmus,C57-6J,TA,FLT,3,M25,tibialis_anterior,Flight,OSD-105,RR-1,SpaceX-4,,127C,plex_1
+Mmus_C57-6J_TA_FLT_Rep4_M26,Mus musculus,False,Mmus,C57-6J,TA,FLT,4,M26,tibialis_anterior,Flight,OSD-105,RR-1,SpaceX-4,,126,plex_2
+Mmus_C57-6J_TA_FLT_Rep5_M27,Mus musculus,False,Mmus,C57-6J,TA,FLT,5,M27,tibialis_anterior,Flight,OSD-105,RR-1,SpaceX-4,,127N,plex_2
+Mmus_C57-6J_TA_FLT_Rep6_M28,Mus musculus,False,Mmus,C57-6J,TA,FLT,6,M28,tibialis_anterior,Flight,OSD-105,RR-1,SpaceX-4,,127C,plex_2

@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import torch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -14,32 +15,16 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.data.artifact import DataArtifact
 from src.data.modelprep import ModelPrep
 from src.data.read_writer import read_writer
+from src.config.config import TRAINERS
 
 
 # REFACTOR
-TRAINERS = {
-    "logreg": {
-        "config_module": "src.training.train_conf.logreg_config",
-        "config_class": "logreg_train_config",
-        "train_module": "src.training.train.logreg_train",
-        "train_function": "train_logreg",
-        "output_filename": "probe.pkl",
-        "torchrun": False,
-    },
-    "simple-mlp": {
-        "config_module": "src.training.train_conf.mlp_config",
-        "config_class": "mlp_train_config",
-        "train_module": "src.training.train.mlp_train",
-        "train_function": "train_mlp",
-        "output_filename": "mlp_results.pkl",
-        "torchrun": True,
-    },
-}
 
 
+# REFACTOR
 def load_config(model_name: str, config_path: Path | None, overrides: list[str]):
     settings = TRAINERS[model_name]
-    module = importlib.import_module(settings["config_module"])
+    module = importlib.import_module(settings["config_module"]) # just rename the whole module and import everything
     config_class = getattr(module, settings["config_class"])
 
     options = {}
@@ -72,21 +57,19 @@ def run_pipeline(model_name: str, dataset: str, *, data_dir: Path | None = None,
         config = load_config(model_name, None, [])
 
     if settings["torchrun"]:
-        import torch
-
         device = torch.device(config.device)
         if device.type == "cuda":
             torch.cuda.set_device(device)
 
-    train_module = importlib.import_module(settings["train_module"])
+    train_module = importlib.import_module(settings["train_module"]) # just rename the whole module and import everything
     train_function = getattr(train_module, settings["train_function"])
 
     source = #TODO
-    processed = ModelPrep.from_pretrained(source, model_name, input_filename=tuple(source.metadata["input_files"]), output_filename="assembled.pkl")
-    adata = read_writer("train", source.name, action="read", artifact=processed, filename="assembled.pkl", model_name=model_name)
+    processed: DataArtifact = ModelPrep.from_pretrained(source, model_name, input_filename=tuple(source.metadata["input_files"]), output_filename="assembled.pkl") # should not happen here should be in pipe
+    adata = read_writer("train", source.name, action="read", artifact=None, filename="assembled.pkl", model_name=model_name) # not how read writer is used, 
 
     result = train_function(adata, config)
-    output = read_writer("train", source.name, artifact=processed, data=result, filename=settings["output_filename"], model_name=model_name)
+    output = read_writer("train", source.name, artifact=processed, data=result, filename=settings["output_filename"], model_name=model_name) # don't use readwriter, just read from processed directly using a different processor.
 
     print(f"[{source.metadata['study_id']}] Model: {model_name}")
     print(f"CV AUROC: {result['metrics']['cv_scores']}")

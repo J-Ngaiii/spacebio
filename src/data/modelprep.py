@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+import Path
 
 from src.config.config import BATCHPROCESSING_SETTINGS, DATASETS, MODELS
 from src.data import preprocess
@@ -14,7 +15,7 @@ class ModelPrep:
         raise TypeError("Use ModelPrep.from_pretrained(...) or ModelPrep.from_batch(...).")
 
     @classmethod
-    def from_pretrained(cls, artifact: DataArtifact, model_type: str, *, input_filename: str | tuple[str, ...] | None = None, output_filename: str | None = None, **kwargs) -> DataArtifact:
+    def from_interim(cls, artifact: DataArtifact, model_type: str, *, input_filename: str | tuple[str, ...] | None = None, output_filename: str | None = None, **kwargs) -> DataArtifact:
         if not isinstance(artifact, DataArtifact):
             raise TypeError("ModelPrep requires a DataArtifact.")
         if artifact.stage != "interim":
@@ -34,8 +35,9 @@ class ModelPrep:
         configured_input = reader_options.pop("filenames", "standardized.pkl")
         configured_output = writer_options.pop("filenames", "model_data.pkl")
         input_filename = configured_input if input_filename is None else input_filename
-        output_filename = configured_output if output_filename is None else output_filename
-
+        base_output = configured_output if output_filename is None else output_filename
+        output_filename = str(Path(model_type) / name / base_output) # validate that this works
+        
         data = read_writer("model", name, action="read", artifact=artifact, filename=input_filename, model_name=model_type, read_writer_kwargs=reader_options)
         transformed_data = transform(data, **kwargs)
         output = read_writer("model", name, action="write", artifact=artifact, data=transformed_data, filename=output_filename, model_name=model_type, read_writer_kwargs=writer_options)
@@ -44,4 +46,4 @@ class ModelPrep:
 
     @classmethod
     def from_batch(cls, artifacts: Iterable[DataArtifact], model_type: str, *, input_filename: str | tuple[str, ...] | None = None, output_filename: str | None = None, **kwargs) -> tuple[DataArtifact, ...]:
-        return tuple(cls.from_pretrained(artifact, model_type=model_type, input_filename=input_filename, output_filename=output_filename, **kwargs) for artifact in artifacts)
+        return tuple(cls.from_interim(artifact, model_type=model_type, input_filename=input_filename, output_filename=output_filename, **kwargs) for artifact in artifacts)

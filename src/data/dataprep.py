@@ -12,10 +12,10 @@ class DataPrep:
     """Standardize one raw artifact or a configured batch of raw artifacts."""
 
     def __init__(self, *args, **kwargs):
-        raise TypeError("Use DataPrep.from_pretrained(...) or DataPrep.from_batch(...).")
+        raise TypeError("Use DataPrep.from_raw(...) or DataPrep.from_batch(...).")
 
     @classmethod
-    def from_pretrained(cls, artifact: DataArtifact, standardizer: str = "default", **kwargs) -> DataArtifact:
+    def from_raw(cls, artifact: DataArtifact, standardizer: str = "default", **kwargs) -> DataArtifact:
         if not isinstance(artifact, DataArtifact):
             raise TypeError("DataPrep requires a DataArtifact.")
         if artifact.stage != "raw":
@@ -48,4 +48,4 @@ class DataPrep:
 
     @classmethod
     def from_batch(cls, artifacts: Iterable[DataArtifact], standardizer: str = "default", **kwargs) -> tuple[DataArtifact, ...]:
-        return tuple(cls.from_pretrained(artifact, standardizer=standardizer, **kwargs) for artifact in artifacts)
+        return tuple(cls.from_raw(artifact, standardizer=standardizer, **kwargs) for artifact in artifacts)

@@ -3,6 +3,7 @@ import argparse
 from copy import deepcopy
 from pathlib import Path
 import sys
+import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -41,17 +42,14 @@ def run_pipeline(dataset: str = "OSD-105", *, data_dir: Path | None = None, conf
         raise ValueError(f"Multiple protein matrices: {proteins}")
     filenames.extend(proteins)
 
-    metadata = deepcopy(DATASETS[name].get("metadata", {}))
-    metadata.update({"source": DATASETS[name]["source"], "study_id": study_id, "input_files": filenames})
-    source = DataArtifact(name=name, stage="interim", path=data_dir, metadata=metadata)
-    processed = ModelPrep.from_pretrained(source, "logreg", input_filename=tuple(filenames), output_filename="assembled.pkl")
-    adata = read_writer("train", name, action="read", artifact=processed, filename="assembled.pkl", model_name="logreg")
+    
+    adata = pd.read_csv(f"data/processed/logreg/{dataset}")
     result = train_logreg(adata, config)
-    output = read_writer("train", name, artifact=processed, data=result, filename="probe.pkl", model_name="logreg")
     metrics = result["metrics"]
     print(f"[{study_id}] {metrics['n_samples']} samples x {metrics['n_genes']} genes; CV AUROC: {metrics['cv_scores']}")
-    print(f"Saved fitted estimator and CV metrics: {output.path / 'probe.pkl'}")
     print("Raw RNA count schema sanity check; protein is retained but is not used for fitting.")
+    # save results in predictions
+
     return output
 
 

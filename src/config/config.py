@@ -1,5 +1,25 @@
-# eveytime we add a dataset we instantiate a standardizer and source
+# TRAINING
+TRAINERS = {
+    "logreg": {
+        "config_module": "src.training.train_conf.logreg_config",
+        "config_class": "logreg_train_config",
+        "train_module": "src.training.train.logreg_train",
+        "train_function": "train_logreg",
+        "output_filename": "probe.pkl",
+        "torchrun": False,
+    },
+    "simple-mlp": {
+        "config_module": "src.training.train_conf.mlp_config",
+        "config_class": "mlp_train_config",
+        "train_module": "src.training.train.mlp_train",
+        "train_function": "train_mlp",
+        "output_filename": "mlp_results.pkl",
+        "torchrun": True,
+    },
+}
 
+# PREPROCESSING
+# eveytime we add a dataset we instantiate a standardizer and source
 BATCHPROCESSING_SETTINGS = {
     "raw": ("osd-105", "osd-101", "osd-102", "osd-137", "osd-48"),
     "interim": ("osd-105", "osd-101", "osd-102", "osd-137", "osd-48"),

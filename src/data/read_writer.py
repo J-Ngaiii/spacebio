@@ -16,7 +16,7 @@ def _dataset_dir(stage: str, dataset_name: str) -> Path:
     return DATA_ROOT / stage / dataset_name
 
 
-def read_writer(operation: str, dataset_name: str, *, action: str = "write", data: Any = None, filename: str | tuple[str, ...] | list[str] | None = None, model_name: str | None = None, artifact: DataArtifact | None = None, read_writer_kwargs: dict[str, Any] | None = None) -> Any:
+def read_writer(operation: str, dataset_name: str, action: str = "write", data: Any = None, filename: str | tuple[str, ...] | list[str] | None = None, model_name: str | None = None, artifact: DataArtifact | None = None, read_writer_kwargs: dict[str, Any] | None = None) -> Any:
     """Read stage inputs or save stage outputs and return a DataArtifact."""
     operation = normalize_name(operation)
     action = normalize_name(action)
@@ -95,7 +95,7 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
         if isinstance(filename, str):
             return _read(input_dir / filename, **read_writer_kwargs or {})
         return {name: _read(input_dir / name, **read_writer_kwargs or {}) for name in filenames}
-    else:
+    elif action == "write":
         output_dir.mkdir(parents=True, exist_ok=True)
         _write(data, output_dir / filename, **read_writer_kwargs or {})
 
