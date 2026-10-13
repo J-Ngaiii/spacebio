@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def run_pipeline(dataset: str = "OSD-105", *, data_dir: Path | None = None, config: logreg_train_config | None = None) -> DataArtifact:
-    input_path = PROJECT_ROOT / "data" / "processed" / "logreg" / dataset / "model_data.pkl"
+    input_path = PROJECT_ROOT / "data" / "processed" / "logreg" / normalize_name(dataset) / "model_data.pkl"
     with input_path.open("rb") as stream:
         adata = pickle.load(stream)
     result = train_logreg(adata, config)
