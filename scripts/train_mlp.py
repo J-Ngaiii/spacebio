@@ -1,8 +1,9 @@
 """Train an MLP on existing interim RNA counts and optionally track it with W&B."""
 import argparse
+from copyreg import pickle
 from pathlib import Path
 import sys
-from turtle import pd
+import pickle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -11,9 +12,12 @@ from src.data.read_writer import read_writer
 from src.training.train.mlp_train import train_mlp
 from src.training.train_conf.mlp_config import mlp_train_config
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def run_pipeline(dataset: str = "OSD-105", *, data_dir: Path | None = None, config: mlp_train_config | None = None):
-    adata = pd.read_csv(f"data/processed/mlp/{dataset}")
+    input_path = "PROJECT_ROOT" / "data" / "processed" / "mlp" / dataset / "model_data.pkl"
+    with input_path.open("rb") as stream:
+        adata = pickle.load(stream)
     result = train_mlp(adata, config)
     # save results in predictions
     print(f"CV AUROC: {result['metrics']['cv_scores']}; saved {output.path / 'mlp_results.pkl'}")

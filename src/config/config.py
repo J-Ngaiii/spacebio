@@ -58,7 +58,40 @@ def osdr_dataset_config(study_id: str, tissue: str) -> dict:
 
 
 DATASETS = {
-    "osd-105": osdr_dataset_config("OSD-105", "tibialis anterior"),
+    "osd-105": {
+        "source": "nasa",
+        "study_id": "OSD-105",
+        "standardizer": "osdr",
+        "metadata": {
+            "type": "tibialis anterior",
+            "raw": {
+                "reader_dict": {
+                    "filenames": (
+                        "osd-105_expression_counts.csv",
+                        "osd-105_obs.csv",
+                        "osd-105_protein_matrix.csv",
+                        "osd-105_var.csv",
+                    ),
+                },
+                "writer_dict": {
+                    "filenames": "standardized.pkl",
+                },
+            },
+            "interim": {
+                "reader_dict": {
+                    "filenames": (
+                        "OSD-105_obs.csv",
+                        "OSD-105_var.csv",
+                        "OSD-105_expression_counts.csv",
+                        "OSD-105_protein_matrix.csv",
+                    ),
+                },
+                "writer_dict": {
+                    "filenames": "model_data.pkl",
+                },
+            },
+        },
+    },
     "osd-101": osdr_dataset_config("OSD-101", "gastrocnemius"),
     "osd-102": osdr_dataset_config("OSD-102", "kidney"),
     "osd-137": osdr_dataset_config("OSD-137", "liver"),

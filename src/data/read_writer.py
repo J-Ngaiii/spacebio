@@ -16,7 +16,7 @@ def _dataset_dir(stage: str, dataset_name: str) -> Path:
     return DATA_ROOT / stage / dataset_name
 
 
-def read_writer(operation: str, dataset_name: str, action: str = "write", data: Any = None, filename: str | tuple[str, ...] | list[str] | None = None, model_name: str | None = None, artifact: DataArtifact | None = None, read_writer_kwargs: dict[str, Any] | None = None) -> Any:
+def read_writer(operation: str, dataset_name: str, *, action: str = "write", data: Any = None, filename: str | tuple[str, ...] | list[str] | None = None, model_name: str | None = None, artifact: DataArtifact | None = None, read_writer_kwargs: dict[str, Any] | None = None) -> Any:
     """Read stage inputs or save stage outputs and return a DataArtifact."""
     operation = normalize_name(operation)
     action = normalize_name(action)
@@ -58,7 +58,7 @@ def read_writer(operation: str, dataset_name: str, action: str = "write", data: 
             if model_name not in MODELS:
                 raise ValueError(f"Unknown model type: {model_name!r}")
 
-            output_dir = _dataset_dir(output_stage, dataset_name) / model_name
+            output_dir = output_dir = DATA_ROOT / "processed" / model_name / dataset_name
             metadata["model_type"] = model_name
         case "train":
             input_stage = "processed"

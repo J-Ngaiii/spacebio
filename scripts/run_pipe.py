@@ -1,67 +1,73 @@
 import argparse
+from copy import deepcopy
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.config.config import DATASETS, MODELS
 from src.data.artifact import DataArtifact
 from src.data.dataprep import DataPrep
 from src.data.modelprep import ModelPrep
-from src.data.read_writer import read_writer
+from src.data.read_writer import DATA_ROOT
+from src.utils import normalize_name
 
 
-def run_pipeline(dataset: str, stage:str , path:str, model_type: str):
-    match stage:
-        case None:
-            # Run pipeline from scratch
+def run_pipeline(dataset: str, stage: str | None, path: str | Path, model_type: str) -> DataArtifact:
+    dataset = normalize_name(dataset)
+    model_type = normalize_name(model_type)
+    stage = normalize_name(stage) if stage is not None else None
+    path = Path(path)
 
-            # Artifact exists to track metadata as we read, write and process data
-            # Prerpocesing organizers just read directly from the Artifact then apply transformations
-            # Less messey than having transformation functions pass metadata and dataframes in and out at the same time
-            rawDatasetArtifact = DataArtifact(name=dataset, stage="raw", path=path) # runtime class to track metadata as we proces
-            # DataPrep is an organizer class that then reads the metadata in an artifact, manages pulling from preprocessing functions in preprocess.py, 
-            # applies the functions then writes the transformed outputs to interim, passing an updated DataArtifact out
-            interimDatasetArtifact = DataPrep.from_raw(artifact=rawDatasetArtifact, standardizer="default") 
-            # ModelPrep is also an organizer class tghat reads metadata in an artifact, applies transformations and output an udpated Artifact
-            processedDatasetArtifact = ModelPrep.from_interim(artifact=interimDatasetArtifact, model_type=model_type) 
-            # END. Train.py takes over to read from processed
-        case "interim":
-            # Run only the interim data stage
+    if dataset not in DATASETS:
+        raise ValueError(f"Unknown dataset: {dataset!r}")
+    if model_type not in MODELS:
+        raise ValueError(f"Unknown model type: {model_type!r}")
+    if stage not in {None, "raw", "interim"}:
+        raise ValueError(f"Unknown stage: {stage!r}")
+    if not path.is_dir():
+        raise FileNotFoundError(path)
 
-            interimDatasetArtifact = DataArtifact(name=dataset, stage="interim", path=path)
-            processedDatasetArtifact = ModelPrep.from_interim(artifact=interimDatasetArtifact, model_type=model_type) 
-            # END
-        case _:
-            raise ValueError(f"Unknown stage: {stage}")
+    settings = DATASETS[dataset]
+    metadata = deepcopy(settings.get("metadata", {}))
+    metadata.update({"source": settings["source"], "study_id": settings["study_id"]})
 
-
-    # Keep filenames unique when multiple studies share the model directory.
-    processed = ModelPrep.from_pretrained(source, model_type, input_filename=tuple(source.metadata["input_files"]), output_filename=f"{name}_assembled.pkl")
-    adata = read_writer("train", name, action="read", artifact=processed, filename=f"{name}_assembled.pkl", model_name=model_type)
-
-    if "arm" not in adata.obs:
-        raise ValueError("Sample metadata must contain the arm label.")
-    if "arm" in adata.var_names or "sample_id" in adata.var_names:
-        raise ValueError("Gene IDs conflict with reserved CSV columns: arm or sample_id.")
-
-    table = adata.to_df()
-    table.index.name = "sample_id"
-    table["arm"] = adata.obs["arm"]
-
-    output = read_writer("model", name, artifact=source, data=table, filename=f"{name}.csv", model_name=model_type, read_writer_kwargs={"index": True})
-    print(f"Saved {output.path / f'{name}.csv'}")
-    return output
+    if stage is None or stage == "raw":
+        raw_artifact = DataArtifact(name=dataset, stage="raw", path=path, metadata=metadata)
+        interim_artifact = DataPrep.from_raw(raw_artifact, standardizer="default")
+    if stage == "interim":
+        interim_artifact = DataArtifact(name=dataset, stage="interim", path=path, metadata=metadata)
+    
+    processed_artifact = ModelPrep.from_interim(interim_artifact, model_type=model_type)
+    print(f"[{dataset}] Prepared {model_type}: {processed_artifact.path}")
+    return processed_artifact
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--datasets", nargs="+", default=["OSD-105"])
-    parser.add_argument("--models", nargs="+", choices=("logreg", "simple-mlp"), default=["logreg", "simple-mlp"])
+    parser.add_argument("--models", nargs="+", choices=tuple(MODELS), default=["logreg", "simple-mlp"])
+    parser.add_argument("--stage", choices=("raw", "interim"), default=None, help="Starting stage; defaults to raw.")
+    parser.add_argument("--path", type=Path, help="Input dataset directory; requires exactly one dataset.")
     args = parser.parse_args()
 
+    if args.path is not None and len(args.datasets) != 1:
+        parser.error("--path requires exactly one dataset.")
+
     for dataset in args.datasets:
+        name = normalize_name(dataset)
+        if name not in DATASETS:
+            parser.error(f"Unknown dataset: {dataset!r}")
+
+        input_path = args.path
+        if input_path is None:
+            input_stage = args.stage or "raw"
+            study_id = DATASETS[name]["study_id"]
+            candidates = [DATA_ROOT / input_stage / folder for folder in (study_id, name, name.replace("-", ""))]
+            input_path = next((candidate for candidate in candidates if candidate.is_dir()), candidates[0])
+
         for model_type in args.models:
-            run_pipeline(dataset, model_type)
+            run_pipeline(dataset, args.stage, input_path, model_type)
 
 
 if __name__ == "__main__":
