@@ -20,8 +20,13 @@ def run_pipeline(dataset: str = "OSD-105", *, data_dir: Path | None = None, conf
     metrics = result["metrics"]
     print(f"[{dataset}] {adata.n_obs} samples x {adata.n_vars} genes; CV AUROC: {metrics['cv_scores']}; OOF AUROC: {metrics['oof_auroc']:.3f}")
     print("RNA-only schema probe; these small-sample scores are not a benchmark.")
-    # save results in predictions
-    return 
+
+    output_path = PROJECT_ROOT / "data" / "predictions" / normalize_name(dataset) / "simple-mlp" / "mlp_results.pkl"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("wb") as stream:
+        pickle.dump(result, stream)
+    print(f"Saved results: {output_path}")
+    return output_path
 
 
 def main():

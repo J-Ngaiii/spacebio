@@ -163,6 +163,16 @@ class PrepToTrainPathTests(unittest.TestCase):
             train_mlp_script.run_pipeline("OSD-105", config=mlp_train_config(**FAST_MLP))
         self.assertIn(self.root / "data/processed/simple-mlp/osd-105/model_data.pkl", opened)
 
+    def test_mlp_script_saves_reloadable_results(self):
+        self.prep("simple-mlp", "OSD-105")
+        saved = train_mlp_script.run_pipeline("OSD-105", config=mlp_train_config(**FAST_MLP))
+        self.assertEqual(saved, self.root / "data/predictions/osd-105/simple-mlp/mlp_results.pkl")
+        result = pd.read_pickle(saved)
+        self.assertEqual(len(result["metrics"]["cv_scores"]), 3)
+        model = MLP(**result["architecture"])
+        model.load_state_dict(result["state_dict"])
+        self.assertEqual(model(torch.zeros(1, result["architecture"]["input_dim"])).shape, (1, 1))
+
     def test_missing_processed_data_raises(self):
         with self.assertRaises(FileNotFoundError):
             train_mlp_script.run_pipeline("OSD-105", config=mlp_train_config(**FAST_MLP))
