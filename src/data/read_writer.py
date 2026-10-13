@@ -58,7 +58,7 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
             if model_name not in MODELS:
                 raise ValueError(f"Unknown model type: {model_name!r}")
 
-            output_dir = output_dir = DATA_ROOT / "processed" / model_name / dataset_name
+            output_dir = DATA_ROOT / "processed" / model_name / dataset_name
             metadata["model_type"] = model_name
         case "train":
             input_stage = "processed"

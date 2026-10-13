@@ -10,3 +10,5 @@ __pycache__/
 *.h5ad
 *_expression_counts.csv
 __pycache__/
+.venv/
+wandb/
