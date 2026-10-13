@@ -1,27 +1,26 @@
 """Train an MLP on existing interim RNA counts and optionally track it with W&B."""
 import argparse
-from copyreg import pickle
 from pathlib import Path
 import sys
 import pickle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data.modelprep import ModelPrep
-from src.data.read_writer import read_writer
 from src.training.train.mlp_train import train_mlp
 from src.training.train_conf.mlp_config import mlp_train_config
+from src.utils import normalize_name
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def run_pipeline(dataset: str = "OSD-105", *, data_dir: Path | None = None, config: mlp_train_config | None = None):
-    input_path = "PROJECT_ROOT" / "data" / "processed" / "mlp" / dataset / "model_data.pkl"
+    input_path = PROJECT_ROOT / "data" / "processed" / "simple-mlp" / normalize_name(dataset) / "model_data.pkl"
     with input_path.open("rb") as stream:
         adata = pickle.load(stream)
     result = train_mlp(adata, config)
-    # save results in predictions
-    print(f"CV AUROC: {result['metrics']['cv_scores']}; saved {output.path / 'mlp_results.pkl'}")
+    metrics = result["metrics"]
+    print(f"[{dataset}] {adata.n_obs} samples x {adata.n_vars} genes; CV AUROC: {metrics['cv_scores']}; OOF AUROC: {metrics['oof_auroc']:.3f}")
     print("RNA-only schema probe; these small-sample scores are not a benchmark.")
+    # save results in predictions
     return 
 
 
