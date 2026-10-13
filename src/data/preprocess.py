@@ -84,6 +84,10 @@ def prep_logreg(data: dict[str, pd.DataFrame], *, include_protein: bool = True, 
 
     return adata
 
+def prep_simple_mlp(data: dict[str, pd.DataFrame], **kwargs) -> ad.AnnData:
+    """Same raw-count AnnData as logreg; train_mlp applies log1p and per-fold scaling."""
+    return prep_logreg(data, **kwargs)
+
 def prep_scgpt_lora(data: Any, **kwargs) -> Any:
     """Return standardized data prepared for scGPT LoRA."""
     raise NotImplementedError("Implement scGPT LoRA preprocessing.")
