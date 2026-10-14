@@ -16,6 +16,9 @@ from src.data.sources import nasa
 
 rw = importlib.import_module("src.data.read_writer") # import the read_writer fun to test it
 
+def entry_point(factory):
+    """DataPrep.from_raw or ModelPrep.from_interim."""
+    return factory.from_raw if factory is DataPrep else factory.from_interim
 # Run from the repository root: python scripts/test.py
 class PipelineTests(unittest.TestCase):
     def setUp(self):
@@ -32,21 +35,21 @@ class PipelineTests(unittest.TestCase):
     def artifact(self, stage):
         path = self.root / stage
         path.mkdir(exist_ok=True)
-        return DataArtifact(name="osdr-114", stage=stage, path=path, metadata={"source": "nasa"})
+        return DataArtifact(name="osdr-105", stage=stage, path=path, metadata={"source": "nasa"})
 
     def test_registry_functions_exist(self):
-        for name in [*STANDARDIZERS.values(), *MODELS.values()]: # iterate through all standardizers and models that should be in preprocess.py
+        for name in [*STANDARDIZERS.values(), *(model["cleaner"] for model in MODELS.values())]: # iterate through all standardizers and models that should be in preprocess.py
             with self.subTest(function=name): 
                 # individually assert that the standardizers and models instantiated in the config.py file exist in callable form in preprocess.py
                 # function=name, makes it so that the test report can show the function on which the test failed
                 self.assertTrue(callable(getattr(preprocess, name))) 
 
     def test_raw_write_returns_artifact_and_saves_json(self):
-        result = rw.read_writer("curl", " OSDR-114 ", data={"example": 1}, filename="metadata.json")
+        result = rw.read_writer("curl", " OSDR-105 ", data={"example": 1}, filename="metadata.json")
         self.assertIsInstance(result, DataArtifact)
-        self.assertEqual(result.name, "osdr-114")
+        self.assertEqual(result.name, "osdr-105")
         self.assertEqual(result.stage, "raw")
-        self.assertEqual(result.path, self.root / "data/raw/osdr-114")
+        self.assertEqual(result.path, self.root / "data/raw/osdr-105")
         self.assertIn('"example": 1', (result.path / "metadata.json").read_text())
 
     def test_raw_write_rejects_unknown_dataset(self):
@@ -55,25 +58,25 @@ class PipelineTests(unittest.TestCase):
 
     def test_raw_write_rejects_path_traversal(self):
         with self.assertRaises(ValueError):
-            rw.read_writer("curl", "osdr-114", data={}, filename="../escape.json")
+            rw.read_writer("curl", "osdr-105", data={}, filename="../escape.json")
         self.assertFalse((self.root / "data").exists())
 
     def test_nasa_ingestion_uses_registered_accession_and_saves_metadata(self):
         response = Mock()
-        response.json.return_value = {"accession": "OSD-114"}
+        response.json.return_value = {"accession": "OSD-105"}
         with patch.object(nasa.requests, "get", return_value=response) as get:
-            result = nasa.pull_dataset(" OSDR-114 ")
-        self.assertEqual(get.call_args.args[0], nasa._endpoint("dataset", accession="OSD-114"))
+            result = nasa.pull_dataset(" OSDR-105 ")
+        self.assertEqual(get.call_args.args[0], nasa._endpoint("dataset", accession="OSD-105"))
         response.raise_for_status.assert_called_once()
         self.assertTrue((result.path / "metadata.json").is_file())
-        self.assertEqual(result.metadata["accession"], "OSD-114")
+        self.assertEqual(result.metadata["accession"], "OSD-105")
 
     def test_nasa_failed_request_does_not_save_data(self):
         response = Mock()
         response.raise_for_status.side_effect = RuntimeError("HTTP failure")
         with patch.object(nasa.requests, "get", return_value=response):
             with self.assertRaisesRegex(RuntimeError, "HTTP failure"):
-                nasa.pull_dataset("osdr-114")
+                nasa.pull_dataset("osdr-105")
         self.assertFalse((self.root / "data").exists())
         response.json.assert_not_called()
 
@@ -86,13 +89,13 @@ class PipelineTests(unittest.TestCase):
             # tuple unpacking: factory maps to DataPrep then ModelPrep, keyword to "osdr" then "pca"
             with self.subTest(factory=factory.__name__):
                 with self.assertRaises(TypeError):
-                    factory.from_pretrained("osdr-114", keyword) # first arg should be a DataArtifact
+                    entry_point(factory)("osdr-105", keyword) # first arg should be a DataArtifact
 
     def test_factories_reject_wrong_stages(self):
         for factory, stage, keyword in [(DataPrep, "interim", "osdr"), (ModelPrep, "raw", "pca")]:
             with self.subTest(factory=factory.__name__):
                 with self.assertRaises(ValueError):
-                    factory.from_pretrained(self.artifact(stage), keyword) # inputting an artifact with the wrong stage should error
+                    entry_point(factory)(self.artifact(stage), keyword) # inputting an artifact with the wrong stage should error
                     # DataPrep only takes in artifacts in the "raw" stage
                     # ModelPrep only takes in artifacts in the "interim" stage
 
@@ -101,7 +104,7 @@ class PipelineTests(unittest.TestCase):
             with self.subTest(factory=factory.__name__):
                 with self.assertRaises(ValueError):
                     # no dataset and thus no preprocessing modules for "unkown" -> should error
-                    factory.from_pretrained(self.artifact(stage), "unknown") 
+                    entry_point(factory)(self.artifact(stage), "unknown") 
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
