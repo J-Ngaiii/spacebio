@@ -13,11 +13,24 @@ from pathlib import Path
 
 STUDY_ID = sys.argv[1] if len(sys.argv) > 1 else "OSD-105"
 
+PROTEIN_NA_STUDIES = {
+    "OSD-48": (
+        "processed proteomics is pool-level only (no per-animal values); "
+        "protein-coverage columns are filled with NA"
+    ),
+}
+
+RNA_ONLY_STUDIES = {
+    "OSD-100", "OSD-194", "OSD-238", "OSD-239", "OSD-243", "OSD-244",
+    "OSD-254", "OSD-289", "OSD-397", "OSD-421", "OSD-515", "OSD-666",
+}
+for _s in RNA_ONLY_STUDIES:
+    PROTEIN_NA_STUDIES[_s] = "RNA-only study (no proteomics in design); protein-coverage columns are NA"
+
 RAW = Path(__file__).resolve().parent.parent / "raw"
 OUT = Path(__file__).resolve().parent.parent / "output"
 REF = Path(__file__).resolve().parent.parent.parent / "reference"
 
-# --- Step 1: row spine from the count matrix ---
 count_files = list(RAW.glob("*_RSEM_Unnormalized_Counts_GLbulkRNAseq.csv"))
 if len(count_files) != 1:
     raise FileNotFoundError(
@@ -27,9 +40,7 @@ if len(count_files) != 1:
 counts = pd.read_csv(count_files[0], index_col=0)
 var = pd.DataFrame({"ensembl_id": counts.index})
 
-# --- Step 2: join the ortholog ---
-# Rename BioMart export.
-orthologs = pd.read_csv(REF / "mouse_human_orthologs.tsv", sep="	")
+orthologs = pd.read_csv(REF / "mouse_human_orthologs.tsv", sep="\t")
 orthologs = orthologs.rename(columns={
     "Gene stable ID": "ensembl_id",
     "Gene name": "mgi_symbol",
@@ -39,7 +50,7 @@ orthologs = orthologs.rename(columns={
 var = var.merge(orthologs, on="ensembl_id", how="left")
 
 # Real genomes have duplicate ensembl_id rows in BioMart exports when a gene
-# has multiple homology-type entries. Collapse before continuing.
+# has multiple homology-type entries.
 dupe_ensembl = var["ensembl_id"].duplicated(keep=False)
 if dupe_ensembl.sum():
     print(f"NOTE: {dupe_ensembl.sum()} BioMart rows had duplicate ensembl_id "
@@ -55,42 +66,44 @@ if dupe_ensembl.sum():
 
 missing_ortholog = var["human_ortholog"].isna().sum()
 if missing_ortholog:
-    # no human ortholog.
     print(f"NOTE: {missing_ortholog} genes had no human ortholog — kept, not dropped")
 
-# --- Step 3: join protein coverage (UniProt to gene) ---
-# Every TargetProtein table in raw/ (both TMT plexes), same format
-# (Accession / Description / ratio columns). Concatenated so the yield
-# report covers all. A gene quantified in both plexes collapses to one var row.
-protein_files = sorted(RAW.glob("*_TargetProtein.txt"))
-if len(protein_files) != 2:
-    raise FileNotFoundError(
-        f"Expected exactly 2 TargetProtein tables (one per TMT plex) in {RAW}, "
-        f"found {len(protein_files)}: {[p.name for p in protein_files]}"
+if STUDY_ID in PROTEIN_NA_STUDIES:
+    print(f"NOTE: [{STUDY_ID}] {PROTEIN_NA_STUDIES[STUDY_ID]}")
+    var["uniprot_accession"] = pd.NA
+    var["n_protein_groups"] = 0
+    var["ambiguous_protein_map"] = False
+    mapped_genes = 0
+    n_protein_groups = 0
+    unmapped_protein_groups = 0
+else:
+    protein_files = sorted(RAW.glob("*_TargetProtein.txt"))
+    if len(protein_files) != 2:
+        raise FileNotFoundError(
+            f"Expected exactly 2 TargetProtein tables (one per TMT plex) in {RAW}, "
+            f"found {len(protein_files)}: {[p.name for p in protein_files]}"
+        )
+    protein_table = pd.concat(
+        [pd.read_csv(p, sep="\t") for p in protein_files], ignore_index=True
     )
-protein_table = pd.concat(
-    [pd.read_csv(p, sep="	") for p in protein_files], ignore_index=True
-)
-protein_table["gene_symbol"] = protein_table["Description"].str.extract(r"GN=(\S+)")
+    protein_table["gene_symbol"] = protein_table["Description"].str.extract(r"GN=(\S+)")
 
-n_protein_groups = len(protein_table)
+    n_protein_groups = len(protein_table)
 
-# Collapse isoforms (multiple UniProt accessions -> one gene symbol) before
-# merging into var.
-protein_per_gene = (
-    protein_table.groupby("gene_symbol", as_index=False)["Accession"]
-    .agg(lambda s: ";".join(sorted(s)))
-    .rename(columns={"Accession": "uniprot_accession"})
-)
-protein_per_gene["n_protein_groups"] = protein_table.groupby("gene_symbol").size().values
+    protein_per_gene = (
+        protein_table.groupby("gene_symbol", as_index=False)["Accession"]
+        .agg(lambda s: ";".join(sorted(s)))
+        .rename(columns={"Accession": "uniprot_accession"})
+    )
+    protein_per_gene["n_protein_groups"] = protein_table.groupby("gene_symbol").size().values
 
-var = var.merge(
-    protein_per_gene, left_on="mgi_symbol", right_on="gene_symbol", how="left"
-).drop(columns=["gene_symbol"])
-var["ambiguous_protein_map"] = var["n_protein_groups"].fillna(0) > 1
+    var = var.merge(
+        protein_per_gene, left_on="mgi_symbol", right_on="gene_symbol", how="left"
+    ).drop(columns=["gene_symbol"])
+    var["ambiguous_protein_map"] = var["n_protein_groups"].fillna(0) > 1
 
-mapped_genes = var["uniprot_accession"].notna().sum()
-unmapped_protein_groups = n_protein_groups - var["n_protein_groups"].fillna(0).sum()
+    mapped_genes = var["uniprot_accession"].notna().sum()
+    unmapped_protein_groups = n_protein_groups - var["n_protein_groups"].fillna(0).sum()
 print(f"Protein mapping yield: {mapped_genes} genes reached by protein data, "
       f"out of {n_protein_groups} total protein groups measured "
       f"({unmapped_protein_groups:.0f} protein groups did not reach any gene row)")

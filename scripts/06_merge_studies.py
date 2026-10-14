@@ -1,20 +1,25 @@
 """
-Merge RNA raw counts (all studies share the same 57,186-gene Ensembl
-spine) + sample metadata. OSD-48 joins as RNA-only (has_protein=False).
-
-Usage: python 06_merge_studies.py   (run from the directory containing the
-per-study folders: osd105/ osd101/ osd102/ osd137/ osd48/)
+Merge the five per-study schema outputs.
+RNA raw counts (all studies share the same 57,186-gene Ensembl
+spine) + sample metadata.
 """
 import pandas as pd
 import anndata as ad
 from pathlib import Path
 
-STUDIES = ["osd105", "osd101", "osd102", "osd137", "osd48"]
-STUDY_IDS = {
-    "osd105": "OSD-105", "osd101": "OSD-101", "osd102": "OSD-102",
-    "osd137": "OSD-137", "osd48": "OSD-48",
+STUDIES = [
+    "osd105", "osd101", "osd102", "osd137", "osd48",
+    "osd100", "osd194", "osd238", "osd239", "osd243", "osd244",
+    "osd254", "osd289", "osd397", "osd421", "osd515", "osd666",
+]
+STUDY_IDS = {f"osd{i}": f"OSD-{i}" for i in
+             [105, 101, 102, 137, 48, 100, 194, 238, 239,
+              243, 244, 254, 289, 397, 421, 515, 666]}
+NO_PROTEIN_STUDIES = {
+    "OSD-48",  # pool-level proteomics only
+    "OSD-100", "OSD-194", "OSD-238", "OSD-239", "OSD-243", "OSD-244",
+    "OSD-254", "OSD-289", "OSD-397", "OSD-421", "OSD-515", "OSD-666",
 }
-NO_PROTEIN_STUDIES = {"OSD-48"}
 
 SHARED_VAR_COLS = ["mgi_symbol", "human_ortholog", "human_homology_type"]
 
@@ -36,17 +41,21 @@ for folder in STUDIES:
         var_shared = var[SHARED_VAR_COLS]
         spine = var.index
     else:
-        if set(var.index) != set(spine):
-            raise ValueError(
-                f"{study_id}: gene set differs from the reference spine "
-                f"({len(var)} vs {len(spine)} genes) — investigate before merging"
-            )
-        shared_ref = var_reference.loc[var.index, SHARED_VAR_COLS]
-        if not shared_ref.equals(var[SHARED_VAR_COLS]):
+        overlap = spine.intersection(var.index)
+        shared_ref = var_reference.loc[overlap, SHARED_VAR_COLS]
+        if not shared_ref.equals(var.loc[overlap, SHARED_VAR_COLS]):
             raise ValueError(f"{study_id}: shared var columns differ from the reference spine")
+        dropped = spine.difference(var.index)
+        if len(dropped):
+            raise ValueError(
+                f"{study_id}: lacks {len(dropped)} reference-spine genes "
+                f"(e.g. {list(dropped)[:5]}) -- cannot merge without NaN rows"
+            )
+        spine = overlap
+        var_shared = var_shared.loc[spine]
         counts = counts.reindex(spine)
 
-    counts = counts.T  # samples as rows
+    counts = counts.T
     obs["study_id"] = study_id
     obs["has_protein"] = study_id not in NO_PROTEIN_STUDIES
     obs_parts.append(obs)
@@ -67,7 +76,6 @@ print(f"  missions: {adata.obs['mission'].value_counts().to_dict()}")
 print(f"  arms: {adata.obs['arm'].value_counts().to_dict()}")
 print(f"  paired (has_protein): {adata.obs['has_protein'].sum()} of {adata.shape[0]}")
 
-# Task B needs two arms without NaNs.
 y = (adata.obs["arm"] == "Flight").astype(int)
 if y.isna().any() or y.nunique() != 2:
     raise ValueError("Task B label column broken after merge — check arm mapping")

@@ -1,0 +1,13 @@
+sample_id,organism,has_ercc,organism_code,strain,tissue_code,arm_code,replicate,animal_id,tissue,arm,osd_id,mission,spacecraft,preservation_method,tmt_plex,tmt_channel
+Mmus_C57-6J_EYE_GC_Rep1_M33,Mus musculus,False,Mmus,C57-6J,EYE,GC,1,M33,eye,Ground.Control,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_GC_Rep2_M34,Mus musculus,False,Mmus,C57-6J,EYE,GC,2,M34,eye,Ground.Control,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_GC_Rep3_M35,Mus musculus,False,Mmus,C57-6J,EYE,GC,3,M35,eye,Ground.Control,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_GC_Rep4_M36,Mus musculus,False,Mmus,C57-6J,EYE,GC,4,M36,eye,Ground.Control,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_GC_Rep5_M37,Mus musculus,False,Mmus,C57-6J,EYE,GC,5,M37,eye,Ground.Control,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_GC_Rep6_M38,Mus musculus,False,Mmus,C57-6J,EYE,GC,6,M38,eye,Ground.Control,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_FLT_Rep1_M23,Mus musculus,False,Mmus,C57-6J,EYE,FLT,1,M23,eye,Flight,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_FLT_Rep2_M24,Mus musculus,False,Mmus,C57-6J,EYE,FLT,2,M24,eye,Flight,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_FLT_Rep3_M25,Mus musculus,False,Mmus,C57-6J,EYE,FLT,3,M25,eye,Flight,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_FLT_Rep4_M26,Mus musculus,False,Mmus,C57-6J,EYE,FLT,4,M26,eye,Flight,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_FLT_Rep5_M27,Mus musculus,False,Mmus,C57-6J,EYE,FLT,5,M27,eye,Flight,OSD-100,RR-1,SpaceX-4,,,
+Mmus_C57-6J_EYE_FLT_Rep6_M28,Mus musculus,False,Mmus,C57-6J,EYE,FLT,6,M28,eye,Flight,OSD-100,RR-1,SpaceX-4,,,
