@@ -1,5 +1,5 @@
 numpy
-pandas
+pandas>=2.3,<3
 scipy
 pyarrow
 scikit-learn
@@ -7,5 +7,5 @@ torch
 ipykernel
 requests
 h5py
-anndata
+anndata>=0.12,<0.13
 wandb
