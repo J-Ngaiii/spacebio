@@ -5,42 +5,85 @@ Classify mouse tissue samples as spaceflight (`Flight`) or ground control
 (OSDR) studies from the Rodent Research-1 mission. Paired proteomics is loaded
 alongside RNA but is not yet used for training.
 
-# Data
-
-Each study is one tissue from the same RR-1 animal cohort:
-
-| Study | Tissue | Samples | Arms | Per-sample protein |
-| --- | --- | --- | --- | --- |
-| OSD-105 | tibialis anterior | 12 | 6 Flight / 6 Ground.Control | yes |
-| OSD-101 | gastrocnemius | 12 | 6 / 6 | yes |
-| OSD-102 | kidney | 12 | 6 / 6 | yes |
-| OSD-137 | liver | 18 | 6 / 6 / 6 Basal | yes |
-| OSD-48 | liver | 14 | 7 / 7 | no (pool-level only) |
-
-`data/interim/<study>/` holds one study as CSVs that together form an AnnData object:
-
-| File | AnnData slot | Contents |
-| --- | --- | --- |
-| `*_obs.csv` | `.obs` | One row per sample: `sample_id`, `arm`, `animal_id`, `tissue`, TMT channel/plex |
-| `*_var.csv` | `.var` | One row per gene: `ensembl_id`, mouse symbol, human ortholog, UniProt mapping |
-| `*_expression_counts.csv` | `.X` | Genes x samples, raw RSEM counts (normalization is per model) |
-| `*_protein_matrix.csv` | `.obsm["protein"]` | Protein x sample abundances |
-
-`data/interim/merged/` holds all studies merged (RNA only). These files were
-built from OSDR downloads by `scripts/01`–`06`, which expect their own
-per-study `raw/` and `output/` folder layout; see the docstrings in each script.
-`data/reference/` holds the mouse–human ortholog table.
-
 # Setup
 
-The repo targets Python 3.9–3.11:
-
+Initialize a conda enviornment. This repository uses Python<3.12. 
 ```bash
 conda create -n spacebio python=3.11.8 -y
 conda activate spacebio
 pip install -r requirements.txt
 pip install -e .
 ```
+
+# Data Pipeline Component
+
+Jonathan's description of the data pipeline architecture below. 
+
+## Conceptual Overview 
+
+The data pipeline is designed to move datasets across three stages represented by three folders. Raw data which is just the base data itself and is housed within `data/raw`. Interim data which is data that has been subject to general cleaning and transformations but has not yet been formatted for a specific model and is housed within `data/interim`. Processed data which is data that is ready for specific models to operate on and is housed within `data/processed`. 
+
+The actual code to move the data through those three stages is done by code that has two abstraction layers. One layer for actual data transformations and another layer on top for coordinating the application of different transformation functions and moving data throughout the repository as it gets cleaned.  
+
+On the first layer are the actual data transformation functions that calculate means, normalize data, etc. These functions are housed in `src/data/preprocess.py`. Different parts of the pipeline import from this file to select and use the correct data transformation function at different stages of the pipeline. All functions in `preprocess.py` are dedicated to data transformation ONLY. Some important properties of the transformation functions in `preprocess.py` include: 
+- They are pure functions that do not modify any global variables or states, they simply execute on the inputted data then output the data
+- They operate entirely in runtime and do not execute any read or write calls to local storage whatsoever. 
+
+The second layer of abstraction are the data preparer classes and DataArtifacts which are primarily dedicated to applying the correct transformation functions from `preprocess.py` and handling reads/writes to disk. First the `DataArtifact` class within `src/data/artifact.py` is a class that serves as a runtime object to track relevant metadata about a particular dataset. DataArtifacts track information about specific dataset CSVs like the processing stage the CSV is in throughout the pipeline and its path on disk. Generally as a rule of thumb we want to **instantiate only one `DataArtifact` instance per csv file**. - Note: Previous implementations of `DataArtifact` were not per CSV but per OSD dataset (eg. contained paths for all sub CSVs under OSD-105 like OSD-105_expression_counts.csv, OSD-105_obs.csv, etc). This was deprecated but some legacy code may still be operating on this scheme. Generally this scheme should be discouraged because it creates too much complexity. 
+
+Next there are two data preparer classes: `DataPrep` within `src/data/dataprep.py` and `ModelPrep` within `src/data/modelprep.py`. These two classes are in charge of managing the application of data transformation functions, read/write operations and generally moving the data through the pipeline stages. They interact with the `DataArtifact` instances, configurations in `src/config/config.py` and the data transformation functions in `preprocess.py`. Generally both of these functions will:
+- Read off data about a particular csv from a `DataArtifact` object
+- Compare dataset information with `config.py` to find the correct data transformation functions for the given dataset at the current stage 
+- Read the data into runtime and import the relevant data transformation functions specified in `config.py` to execute the transformations
+- Write the transformed data to paths pulled from `config.py`
+- Return an updated `DataArtifact` object. 
+
+The specific function call is `DataPrep.from_raw(...)` and `ModelPrep.from_interim(...)`. These are class methods and do not require an instance of the data preparer classes to be first instantiated at runtime. 
+
+`ModelPrep` is a little special because it also reads in information about a model and is the class responsible for creating specific folders and writing to the `data/processed/{model_name}/{actual_data}` path. 
+
+Both `ModelPrep` and `DataPrep` have a batch mode that technically allows for taking in multiple CSVs at once but this may be buggy. 
+
+For syntax on how to call the data preparer classes, check `scripts/run_pipeline.py` and refer to the 'Entry Point and Executing the Pipeline' Section below. 
+
+## Helper Functions and Files
+
+The `read_writer` function in read_write.py is a dedicated read/write function for the data pipeline ONLY. It is only used by the data pipelining functions to execute reads and writes throughout data processing. 
+
+The `utils.py` file has utility functions like normalizing the naming. 
+
+## Pipeline Naming Conventions
+
+Earlier versions of the pipeline generally kept all names in lower case (eg osd-105 instead of OSD-105 or Osd-105). Some more recent code might break from this format but generally this should and can easily be adhered to by applying the `normalize_name` function in `utils.py`.
+
+## Entry Point into Executing the Pipeline
+
+The pipeline entry point file is `run_pipe.py`. It takes in four arguments via argparse from terminal.
+- datasets: specify the dataset name or study id (eg OSD-105)
+- models: specify the list of models to clean the data for (eg. ['logreg', 'mlp'])
+- stage: specify the stage of data processing (eg. start from 'interim' data). Will start from scratch and begin with 'raw` data if no argument is given.
+- path: the path of the dataset that needs to be flowed through the pipeline. Meant to take in only one folder per dataset currently (eg. OSD-105 folder with OSD-105_obs.csv, OSD-105_expression_counts.csv files within is OKAY). Might be a bit buggy on path intake. 
+
+Example terminal call: 
+```bash
+python scripts/run_pipe.py --datasets OSD-105 --models logreg --stage interim --path data/interim/osd105
+```
+For a specific model like logistic regression, this call would check the interim folder for OSD-105 data, transform it into an `annData` object then save it as a .pkl file for the training script to load in the repository's Model Training Component (which is explained below).
+
+## [IMPORTANT] Steps to Add New Datasets
+- Write the relevant data transformation functions and put them in `preprocess.py`. Pay attention to how the specific functions are named in here because both data preparer classes.
+- Update the configurations in `src/config/config.py`. 
+- Input the write path when you run `scripts/run_pipeline.py`
+
+That should largely be it. Instantiation of DataArtifacts happens in `run_pipeline.py`. Then the `DataPrep` and `ModelPrep` are executed by `run_pipeline.py`. As those functions execute they read off the specific `DataArtifact` and `config.py` file to find and execute the transformations in `preprocess.py`. 
+
+## [IMPORTANT] Known Errors
+- Batch mode in `DataPrep` and `ModelPrep` should be verified
+- `run_pipeline.py` has only been tested on the interim stage for logistic regression and OSD-105. More tests and runs should be devised. 
+- The `tests/test.py` file contains the main tests for the data pipeline component and is largely outdated. They should be updated. 
+- The github workflow was previously set to run `tests/test.py` on push to the virtual repository but this part of the code has since been commented out since `test/test.py` fell out of date. 
+
+# Model Training Component
 
 # Usage
 
@@ -60,39 +103,6 @@ python scripts/train_mlp.py --wandb-mode disabled            # --help lists hype
 or `disabled` to run without a W&B login. With 12 samples per study, CV scores
 are a pipeline check, not a benchmark.
 
-## Running on Savio
-
-`slurm/train_mlp.sbatch` prepares the data and trains the MLP on one GPU under
-the `ic_cdss170fall` account. Each person runs it with their own Savio login.
-
-One-time setup on a login node:
-
-```bash
-cd /global/scratch/users/$USER
-git clone https://github.com/J-Ngaiii/spacebio.git && cd spacebio
-module load anaconda3
-conda create -n spacebio python=3.11 -y && conda activate spacebio
-pip install -r requirements.txt && pip install -e .
-```
-
-Submit from the repository root:
-
-```bash
-sbatch slurm/train_mlp.sbatch                # defaults
-sbatch slurm/train_mlp.sbatch --epochs 50    # extra arguments go to train_mlp.py
-squeue -u $USER                              # job status
-```
-
-Output is written to `slurm-<jobid>.out` and results to
-`data/predictions/osd-105/simple-mlp/mlp_results.pkl`.
-
-- **Different account, partition, or GPU:** flags given to `sbatch` override the
-  script, e.g. `sbatch --partition=<p> --gres=gpu:<type>:1 --cpus-per-task=<n> slurm/train_mlp.sbatch`.
-  `sacctmgr -p show associations user=$USER` lists the accounts, partitions,
-  and QoS available to you.
-- **Different conda environment:** `SPACEBIO_ENV=<name> sbatch slurm/train_mlp.sbatch`.
-- **W&B:** jobs log offline. To upload, run `wandb login` once on a login node,
-  then `wandb sync wandb/offline-run-*`.
 
 # Pipeline
 

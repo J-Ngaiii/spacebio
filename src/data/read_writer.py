@@ -37,7 +37,7 @@ def read_writer(operation: str, dataset_name: str, *, action: str = "write", dat
     metadata = {}
 
     match operation:
-        case "curl":
+        case "curl": # DEPRECATED
             input_stage = None
             output_stage = "raw"
             output_dir = _dataset_dir(output_stage, dataset_name)
