@@ -83,6 +83,10 @@ That should largely be it. Instantiation of DataArtifacts happens in `run_pipeli
 - The `tests/test.py` file contains the main tests for the data pipeline component and is largely outdated. They should be updated. 
 - The github workflow was previously set to run `tests/test.py` on push to the virtual repository but this part of the code has since been commented out since `test/test.py` fell out of date. 
 
+## [IMPORTANT] To-dos: 
+- `ModelPrep` and `DataPrep` should be able to take in and combine multiple OSD or other datasets. We will have to add another section in the `config.py` that specifies different sets of data we want to combine and how for a specific model. 
+- Either `ModelPrep` or a new `TrainingPrep` class needs to handle executing a train test split. For deep learning pre-training or fine-tuning where we might want to specifically hold out data by certain biological covariates (eg. species, organs, etc) we need additional we need to have a class that handles that. 
+
 # Model Training Component
 
 # Usage
