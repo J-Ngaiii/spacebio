@@ -1,4 +1,3 @@
-
 #!/bin/bash
 #SBATCH --job-name=spacebio-sequence
 #SBATCH --output=logs/sequence_%j.out
