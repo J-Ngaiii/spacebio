@@ -16,6 +16,22 @@ TRAINERS = {
         "output_filename": "mlp_results.pkl",
         "torchrun": True,
     },
+    "performer": {
+        "config_module": "src.training.train_conf.performer_config",
+        "config_class": "PerformerConfig",
+        "train_module": "src.training.train.performer_train",
+        "train_function": "train_performer",
+        "output_filename": "performer.pt",
+        "torchrun": False,
+    },
+    "hyena": {
+        "config_module": "src.training.train_conf.hyena_config",
+        "config_class": "HyenaConfig",
+        "train_module": "src.training.train.hyena_train",
+        "train_function": "train_hyena",
+        "output_filename": "hyena.pt",
+        "torchrun": False,
+    },
 }
 
 # PREPROCESSING
