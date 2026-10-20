@@ -14,3 +14,5 @@ __pycache__/
 wandb/
 data/predictions/
 slurm-*.out
+
+data/raw/earth/deepgxp/
