@@ -16,17 +16,22 @@ set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 
 # Activate Python environment
-source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate spacebio
+source /global/home/users/jonathanngai/miniconda3/etc/profile.d/conda.sh
+conda activate calypo
+if [ $? -ne 0 ]; then
+  echo "Error: Could not activate virtual environment. Exiting."
+  exit 1
+fi
+
+if [ -f .env ]; then # store API keys in a local .env file then search for the variables
+  export $(grep -v '^#' .env | xargs)
+fi
 
 # Avoid CPU oversubscription
 export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
 export MKL_NUM_THREADS="$SLURM_CPUS_PER_TASK"
 export PYTHONUNBUFFERED=1
 
-# W&B credentials should already be configured
-# via `wandb login` or WANDB_API_KEY.
-export WANDB_MODE=online
 
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $(hostname)"
