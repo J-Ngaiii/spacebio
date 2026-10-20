@@ -95,7 +95,7 @@ def main():
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--output-dir", type=Path, default=Path("results/sequence_models"))
+    parser.add_argument("--output-dir", type=Path, default=Path("data/results/sequence_models"))
 
     parser.add_argument("--wandb-project", default="spacebio-sequence-models")
     parser.add_argument("--wandb-entity", default=None)
