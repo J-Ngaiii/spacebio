@@ -16,3 +16,4 @@ data/predictions/
 slurm-*.out
 
 data/raw/earth/deepgxp/
+.env
