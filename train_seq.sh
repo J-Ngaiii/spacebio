@@ -7,7 +7,6 @@
 # Two times the number of GPUs for 2080ti in savio3_gpu
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:A40:1
-#SBATCH --qos=a40_gpu3_normal
 
 #SBATCH --time=00:60:00
 
