@@ -9,15 +9,9 @@
 #SBATCH --gres=gpu:A40:1
 
 #SBATCH --time=00:60:00
-
-set -euo pipefail
-
-# Run from the repository root
-cd "$SLURM_SUBMIT_DIR"
-
 # Activate Python environment
 source /global/home/users/jonathanngai/miniconda3/etc/profile.d/conda.sh
-conda activate calypo
+conda activate spacebio 
 if [ $? -ne 0 ]; then
   echo "Error: Could not activate virtual environment. Exiting."
   exit 1
@@ -26,12 +20,6 @@ fi
 if [ -f .env ]; then # store API keys in a local .env file then search for the variables
   export $(grep -v '^#' .env | xargs)
 fi
-
-# Avoid CPU oversubscription
-export OMP_NUM_THREADS="$SLURM_CPUS_PER_TASK"
-export MKL_NUM_THREADS="$SLURM_CPUS_PER_TASK"
-export PYTHONUNBUFFERED=1
-
 
 echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $(hostname)"
