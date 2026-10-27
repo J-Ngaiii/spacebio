@@ -106,3 +106,10 @@ def prep_pca(data: Any, **kwargs) -> Any:
 def prep_single_hyena(data: Any, **kwargs) -> Any:
     """Return standardized data prepared for single Hyena."""
     raise NotImplementedError("Implement single Hyena preprocessing.")
+
+
+def prep_bulkformer(data: dict[str, pd.DataFrame], **kwargs) -> ad.AnnData:
+    """Return RNA + protein AnnData with genes aligned to the BulkFormer gene vocabulary."""
+    # TODO: start from prep_logreg(data, include_protein=True), map mouse Ensembl IDs to one-to-one
+    # human orthologs, then reorder genes to the checkpoint's gene list and fill genes it lacks.
+    raise NotImplementedError("Implement BulkFormer preprocessing.")

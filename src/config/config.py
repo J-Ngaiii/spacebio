@@ -16,6 +16,14 @@ TRAINERS = {
         "output_filename": "mlp_results.pkl",
         "torchrun": True,
     },
+    "bulkformer": {
+        "config_module": "src.training.train_conf.bulkformer_config",
+        "config_class": "bulkformer_train_config",
+        "train_module": "src.training.train.bulkformer_train",
+        "train_function": "train_bulkformer",
+        "output_filename": "bulkformer_results.pkl",
+        "torchrun": True,
+    },
 }
 
 # PREPROCESSING
@@ -121,6 +129,9 @@ MODELS = {
     },
     "simple-mlp": {
         "cleaner": "prep_simple_mlp"
+    },
+    "bulkformer": {
+        "cleaner": "prep_bulkformer"
     }
 }
 
