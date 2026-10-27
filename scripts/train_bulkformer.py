@@ -18,7 +18,8 @@ def run_pipeline(dataset: str = "OSD-105", *, data_dir: Path | None = None, conf
         adata = pickle.load(stream)
     result = train_bulkformer(adata, config)
     metrics = result["metrics"]
-    print(f"[{dataset}] {adata.n_obs} samples x {adata.n_vars} genes; CV mean per-protein Pearson: {metrics['cv_scores']}; OOF: {metrics['oof_mean_pearson']:.3f}")
+    print(f"[{dataset}] {adata.n_obs} samples x {adata.n_vars} genes; {metrics['vocab_coverage']:.1%} of BulkFormer's genes present")
+    print(f"CV pooled Pearson: {metrics['cv_scores']}; OOF mean per-protein Pearson: {metrics['oof_mean_pearson']:.3f}")
 
     output_path = PROJECT_ROOT / "data" / "predictions" / normalize_name(dataset) / "bulkformer" / "bulkformer_results.pkl"
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -33,9 +34,10 @@ def main():
     parser.add_argument("--dataset", default="OSD-105")
     parser.add_argument("--data-dir", type=Path)
     defaults = bulkformer_train_config()
-    for name, kind in (("checkpoint_path", str), ("embed_dim", int), ("dropout", float), ("batch_size", int), ("epochs", int), ("lr", float), ("weight_decay", float), ("cv_folds", int), ("random_state", int), ("device", str), ("protein_key", str), ("wandb_project", str), ("wandb_entity", str), ("run_group", str)):
+    for name, kind in (("checkpoint", str), ("dropout", float), ("batch_size", int), ("epochs", int), ("lr", float), ("weight_decay", float), ("cv_folds", int), ("random_state", int), ("device", str), ("protein_key", str), ("wandb_project", str), ("wandb_entity", str), ("run_group", str)):
         parser.add_argument("--" + name.replace("_", "-"), type=kind, default=getattr(defaults, name))
     parser.add_argument("--freeze-backbone", action=argparse.BooleanOptionalAction, default=defaults.freeze_backbone)
+    parser.add_argument("--log2-protein", action=argparse.BooleanOptionalAction, default=defaults.log2_protein)
     parser.add_argument("--wandb-mode", choices=("online", "offline", "disabled"), default=defaults.wandb_mode)
     args = vars(parser.parse_args())
     dataset, data_dir = args.pop("dataset"), args.pop("data_dir")
