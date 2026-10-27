@@ -99,9 +99,9 @@ def prep_scgpt_deepattn(data: Any, **kwargs) -> Any:
     raise NotImplementedError("Implement scGPT deep attention preprocessing.")
 
 
-def prep_pca(data: Any, **kwargs) -> Any:
-    """Return standardized data prepared for PCA."""
-    raise NotImplementedError("Implement PCA preprocessing.")
+def prep_pca(data: dict[str, pd.DataFrame], **kwargs) -> ad.AnnData:
+    """Same genes and proteins as BulkFormer, so the baseline differs only in the model; train_pca applies log TPM."""
+    return prep_bulkformer(data, **kwargs)
 
 
 def prep_single_hyena(data: Any, **kwargs) -> Any:

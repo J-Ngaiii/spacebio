@@ -24,6 +24,14 @@ TRAINERS = {
         "output_filename": "bulkformer_results.pkl",
         "torchrun": True,
     },
+    "pca": {
+        "config_module": "src.training.train_conf.pca_config",
+        "config_class": "pca_train_config",
+        "train_module": "src.training.train.pca_train",
+        "train_function": "train_pca",
+        "output_filename": "pca_results.pkl",
+        "torchrun": False,
+    },
 }
 
 # PREPROCESSING
