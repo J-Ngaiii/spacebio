@@ -1,6 +1,7 @@
 """
 Build the gene table (.var).
-The RNA matrices are keyed by mouse gene symbol, not Ensembl ID.
+
+RNA matrices keyed by mouse gene symbol.
 """
 import gzip
 import pandas as pd
@@ -17,20 +18,20 @@ for tissue in TISSUES:
     with gzip.open(RAW / f"GSE225576_{tissue}.txt.gz", "rt") as f:
         text = f.read().replace("\r\n", "\n").replace("\r", "\n")
     symbols = [line.split("\t", 1)[0] for line in text.split("\n") if line]
-    symbols = symbols[1:]
+    symbols = symbols[1:]  # drop header row
     spines[tissue] = symbols
     print(f"  {tissue}: {len(symbols)} gene rows")
 
 ref = spines["Kidney"]
 for tissue in TISSUES[1:]:
     if set(spines[tissue]) != set(ref):
-        raise ValueError(f"{tissue} gene set differs from Kidney -- cannot merge matrices")
+        raise ValueError(f"{tissue} gene set differs from Kidney; cannot merge matrices")
 
 if len(set(ref)) != len(ref):
     dupes = pd.Series(ref).value_counts()
     dupes = dupes[dupes > 1]
-    raise ValueError(f"{len(dupes)} duplicated gene symbols in RNA spine: "
-                     f"{dupes.head(10).to_dict()} -- resolve before continuing")
+    raise ValueError(f"{len(dupes)} duplicated gene symbols in RNA data: "
+                     f"{dupes.head(10).to_dict()}")
 
 var = pd.DataFrame({"gene_symbol": ref})
 
@@ -53,8 +54,8 @@ var["ambiguous_symbol_map"] = var["n_crosswalk_rows"] > 1
 
 unmapped = var["human_ortholog"].isna().sum()
 ambiguous = var["ambiguous_symbol_map"].sum()
-print(f"NOTE: {unmapped} RNA symbols have no crosswalk entry -- kept, not dropped")
-print(f"NOTE: {ambiguous} symbols map to multiple Ensembl IDs -- flagged ambiguous_symbol_map")
+print(f"NOTE: {unmapped} RNA symbols have no mapping (kept)")
+print(f"NOTE: {ambiguous} symbols map to multiple Ensembl IDs (flagged in ambiguous_symbol_map)")
 
 var.to_csv(OUT / "Earth_var.csv", index=False)
 print(f"[Earth] var table: {var.shape[0]} genes x {var.shape[1]} columns")

@@ -1,11 +1,10 @@
 """
-Assemble the AnnData object and verify RNA<->protein pairing per tissue.
+Assemble the AnnData object and verify RNA-protein pairing per tissue.
+RNA values are normalized counts.
 """
 import pandas as pd
 import anndata as ad
 from pathlib import Path
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score
 
 OUT = Path(__file__).resolve().parent.parent / "output"
 TISSUES = ["kidney", "liver", "muscle", "skin"]
@@ -22,20 +21,6 @@ for tissue in TISSUES:
     rna_ids = [s for s in adata.obs_names if s.startswith(f"{tissue}_")]
     if list(prot[rna_ids].columns) != rna_ids or prot[rna_ids].isna().any().any():
         raise ValueError(
-            f"{tissue}: protein sample columns do not 1:1 match RNA ids -- pairing broken"
+            f"{tissue}: protein sample columns do not match RNA ids 1 to 1"
         )
     print(f"  {tissue}: protein {prot.shape} pairs 1:1 with RNA ({len(rna_ids)} samples)")
-
-for tissue in TISSUES:
-    mask = adata.obs["tissue"] == tissue
-    sub = adata[mask]
-    y = (sub.obs["age_months"] == 30).astype(int)
-    scores = cross_val_score(
-        LogisticRegression(max_iter=1000), sub.X, y, cv=4, scoring="roc_auc"
-    )
-    print(f"  {tissue}: 6M-vs-30M probe AUROC = {sorted(scores)} "
-          f"(sanity check only, 4v4 labels)")
-
-print("Protein matrices: Earth_{tissue}_protein_matrix.csv (Task A validation, per tissue).")
-print("Adequacy gate reminder: RNA values are normalized counts -- Geneformer tokenization")
-print("needs raw counts; record the per-model exclusion decision before embedding.")

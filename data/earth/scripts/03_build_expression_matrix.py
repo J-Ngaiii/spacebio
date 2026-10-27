@@ -1,6 +1,7 @@
 """
 Build the merged RNA expression matrix.
-Values came in as normalized counts.
+
+GEO values are normalized counts.
 """
 import gzip
 import io
@@ -14,7 +15,7 @@ TISSUES = ["Kidney", "Liver", "Muscle", "Skin"]
 
 
 def read_cr_tsv(path):
-    """Read a TSV that uses \r line endings."""
+    """Read a gzipped TSV with CR or CRLF line endings."""
     with gzip.open(path, "rt") as f:
         text = f.read()
     text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -30,8 +31,6 @@ for tissue in TISSUES:
 
 counts = pd.concat(parts, axis=1)
 if counts.isna().any().any():
-    raise ValueError("NaNs in the merged RNA matrix -- gene spines drifted between tissues")
+    raise ValueError("NaNs in the merged RNA matrix; gene sets differ between tissues")
 
 counts.to_csv(OUT / "Earth_expression_counts.csv")
-print(f"[Earth] expression matrix: {counts.shape[0]} genes x {counts.shape[1]} samples "
-      f"(normalized counts, values are fractional)")

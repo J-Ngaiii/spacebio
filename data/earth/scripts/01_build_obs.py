@@ -1,6 +1,8 @@
 """
-Build the sample table (.obs).
+Build the sample table (.obs) for the Earth aging cohort (GSE225576 RNA, PXD040722 TMT proteomics).
 """
+import gzip
+
 import pandas as pd
 from pathlib import Path
 
@@ -8,7 +10,7 @@ RAW = Path(__file__).resolve().parent.parent / "raw"
 OUT = Path(__file__).resolve().parent.parent / "output"
 OUT.mkdir(exist_ok=True)
 
-# PRIDE metadata file
+# PRIDE metadata file -> protein result files it describes (16 TMT channels each)
 METADATA_FILES = {
     "metadata_P2067.csv": ["Kidney_merged_results_20220530_2359_proteins.txt",
                            "Muscle_merged_results_20220531_1130_proteins.txt",
@@ -50,9 +52,8 @@ obs["is_anchor"] = obs["age_months"] == 6
 obs["has_protein"] = True
 
 for tissue in ["Kidney", "Liver", "Muscle", "Skin"]:
-    import gzip
     with gzip.open(RAW / f"GSE225576_{tissue}.txt.gz", "rt") as f:
-        header = f.readline().rstrip("\r").split("	")
+        header = f.readline().rstrip("\r").split("\t")
     rna_ids = {f"{tissue.lower()}_{c}" for c in header[1:]}
     expected = {f"{tissue.lower()}_{a}M{r}" for a in [6, 15, 24, 30] for r in [1, 2, 3, 4]}
     if rna_ids != expected:
@@ -67,4 +68,4 @@ obs.to_csv(OUT / "Earth_obs.csv")
 print(f"[Earth] obs table: {len(obs)} samples x {obs.shape[1]} columns")
 print(f"  tissues: {obs['tissue'].value_counts().to_dict()}")
 print(f"  ages: {obs['age_months'].value_counts().sort_index().to_dict()}")
-print(f"  anchor (6-month) samples: {obs['is_anchor'].sum()}")
+print(f"  6-month samples: {obs['is_anchor'].sum()}")

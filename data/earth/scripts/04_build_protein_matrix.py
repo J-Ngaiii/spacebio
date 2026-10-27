@@ -1,10 +1,8 @@
 """
-Build per-tissue protein matrices.
-
-Quantification is isobarquant signal_sum per TMT channel, not ratio-to-reference.
+Build per-tissue protein matrices. Isobarquant signal_sum per TMT channel.
 
 Output: one CSV per tissue (index gene_symbol, 16 sample columns named
-{tissue}_{age}M_{rep} -- the same ids as obs / the RNA matrix).
+{tissue}_{age}M{rep}, the same ids as obs and the RNA matrix).
 """
 import pandas as pd
 from pathlib import Path
@@ -43,13 +41,13 @@ for result_file, (tissue, meta_name) in PROTEIN_FILES.items():
         print(f"    dropped {n_decoy}/{n_raw} protein-group rows as reverse-decoy "
               f"(###REV###) entries")
 
-    # A group attributed to several genes dropped
+    # Drop protein groups attributed to several genes (pipe-joined names)
     ambiguous = gname.loc[prot.index].str.contains(r"\|", regex=True)
     n_ambig = int(ambiguous.sum())
     if n_ambig:
         prot = prot[~ambiguous]
         print(f"    dropped {n_ambig} protein-group rows with pipe-joined "
-              f"multi-gene names (ambiguous attribution)")
+              f"multi-gene names ")
 
     per_gene = prot.groupby("gene_name").agg(
         **{sample_of_channel[c]: (c, "sum") for c in signal_cols},
@@ -58,12 +56,9 @@ for result_file, (tissue, meta_name) in PROTEIN_FILES.items():
     )
 
     if per_gene.index.astype(str).str.contains(r"[#|]", regex=True).any():
-        raise ValueError(f"{tissue}: decoy or pipe-joined identifiers survived the filter")
+        raise ValueError(f"{tissue}: pipe-joined identifiers survived the filter")
 
     multi = (per_gene["n_protein_groups"] > 1).sum()
     per_gene.to_csv(OUT / f"Earth_{tissue}_protein_matrix.csv")
     print(f"  {tissue}: {per_gene.shape[0]} genes x 16 samples "
           f"({multi} genes from multiple protein groups, signal_sum summed)")
-    print(f"    expected dims check vs audit (post-QC): kidney 6903 / muscle 3150 / skin 7319 / liver 7418")
-
-print("[Earth] per-tissue protein matrices written (never concatenated across tissues)")
