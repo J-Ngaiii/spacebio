@@ -5,8 +5,9 @@
 #SBATCH --job-name=spacebio-mlp
 #SBATCH --account=ic_cdss170fall
 #SBATCH --partition=savio3_gpu
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=2
+#SBATCH --gres=gpu:GTX2080TI:1
+#SBATCH --qos=gtx2080_gpu3_normal
+#SBATCH --cpus-per-task=2  # Savio requires 2 CPUs per GTX2080TI
 #SBATCH --time=00:30:00
 #SBATCH --output=slurm-%j.out
 
