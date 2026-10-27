@@ -14,3 +14,8 @@ __pycache__/
 wandb/
 data/predictions/
 slurm-*.out
+
+protein_model_prep/raw/*
+!protein_model_prep/raw/.gitkeep
+protein_model_prep/out/*
+!protein_model_prep/out/.gitkeep
