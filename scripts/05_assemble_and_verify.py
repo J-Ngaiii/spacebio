@@ -1,19 +1,15 @@
 """
-Assemble into one AnnData object and run a simple probe.
+Assemble the per-study AnnData object (RNA in X, protein in obsm when available),
+check arm labels and protein alignment, and write the column annotations.
 
-Usage: python 05_assemble_and_verify.py [STUDY_ID]
 """
 import sys
 import pandas as pd
 import anndata as ad
 from pathlib import Path
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_score
 
 STUDY_ID = sys.argv[1] if len(sys.argv) > 1 else "OSD-105"
 
-# Studies with no per-sample protein matrix (see DATA_LIMITS in script 04):
-# assemble RNA-only AnnData, skip the protein modality.
 NO_PROTEIN_STUDIES = {"OSD-48"}
 
 OUT = Path(__file__).resolve().parent.parent / "output"
@@ -29,14 +25,12 @@ adata = ad.AnnData(
 )
 
 if STUDY_ID in NO_PROTEIN_STUDIES:
-    print(f"NOTE: [{STUDY_ID}] no per-sample protein matrix (pool-level processed "
-          f"proteomics only) -- assembled RNA-only")
+    print(f"NOTE: [{STUDY_ID}] no per-sample protein matrix (pool-level proteomics only); "
+          f"assembled RNA-only")
 else:
-    # Script 04 saves a (gene_symbol, tmt_plex) MultiIndex
+    # Script 04 saves a (gene_symbol, tmt_plex) MultiIndex.
     protein = pd.read_csv(OUT / f"{STUDY_ID}_protein_matrix.csv", index_col=[0, 1])
-    # Align protein columns to obs row order before transposing: script 04
-    # guarantees the same ID set, but ISA channel order differs from runsheet
-    # order, and obsm rows must match obs rows exactly.
+    # Reindex protein columns to obs order so obsm rows align with obs.
     missing = set(adata.obs_names) - set(protein.columns)
     if missing:
         raise ValueError(f"protein matrix missing samples: {sorted(missing)}")
@@ -46,24 +40,14 @@ else:
 
 print(f"[{STUDY_ID}] AnnData assembled: {adata.shape[0]} samples x {adata.shape[1]} genes")
 
-y = (adata.obs["arm"] == "Flight").astype(int)
+if adata.obs["arm"].isna().any():
+    raise ValueError("arm mapping failed for some samples")
+if adata.obs["arm"].nunique() < 2:
+    raise ValueError("Only one arm present; check tissue/arm filtering upstream")
 
-if y.isna().any():
-    raise ValueError("Label column has NaNs -- arm mapping failed for some samples")
-if y.nunique() < 2:
-    raise ValueError("Only one class present -- check tissue/arm filtering upstream")
-
-scores = cross_val_score(
-    LogisticRegression(max_iter=1000), adata.X, y, cv=3, scoring="roc_auc"
-)
-print(f"Frozen linear probe (raw counts, sanity check only): AUROC scores = {scores}")
-print("Sanity-level number only: 12 samples, 6v6 labels, raw counts, no normalization.")
-print("Its job is proving the schema assembles and a classifier runs -- not benchmarking.")
-
-# --- Column-level provenance: every column in every table, where it came
-# from, and what it does. ---
+# Column-level provenance: source and description of each column.
 COLUMN_ANNOTATIONS = [
-    # table, column, source, description
+    # (table, column, source, description)
     ("obs", "sample_id", "runsheet.csv: Sample Name",
      "Primary key. GLDS sample name encoding organism_strain_tissue_arm_replicate_animal. Joins obs, expression columns, and protein columns."),
     ("obs", "organism", "runsheet.csv: organism", "Organism scientific name (Mus musculus)."),

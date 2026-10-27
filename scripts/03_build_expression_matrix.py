@@ -2,8 +2,6 @@
 Build the expression matrix (.X) for an OSD study.
 Align to obs/var row order & save raw counts.
 Normalization is a per-task decision made downstream.
-
-Usage: python 03_build_expression_matrix.py [STUDY_ID]
 """
 import sys
 import pandas as pd

@@ -1,11 +1,9 @@
 """
 Build the gene table (.var) for an OSD study.
-Row spine = every gene actually present in the count matrix 
-joined to the ortholog crosswalk and the protein accession table.
 
-Join direction: UniProt -> gene (protein rows are scarce).
+Every gene in the count matrix is joined to the mouse-human ortholog
+crosswalk and the protein accession table.
 
-Usage: python 02_build_var.py [STUDY_ID]
 """
 import sys
 import pandas as pd
@@ -13,6 +11,7 @@ from pathlib import Path
 
 STUDY_ID = sys.argv[1] if len(sys.argv) > 1 else "OSD-105"
 
+# Studies without per-animal protein values: protein columns are filled with NA.
 PROTEIN_NA_STUDIES = {
     "OSD-48": (
         "processed proteomics is pool-level only (no per-animal values); "
@@ -25,7 +24,7 @@ RNA_ONLY_STUDIES = {
     "OSD-254", "OSD-289", "OSD-397", "OSD-421", "OSD-515", "OSD-666",
 }
 for _s in RNA_ONLY_STUDIES:
-    PROTEIN_NA_STUDIES[_s] = "RNA-only study (no proteomics in design); protein-coverage columns are NA"
+    PROTEIN_NA_STUDIES[_s] = "RNA-only study; protein-coverage columns are NA"
 
 RAW = Path(__file__).resolve().parent.parent / "raw"
 OUT = Path(__file__).resolve().parent.parent / "output"
@@ -49,12 +48,11 @@ orthologs = orthologs.rename(columns={
 })
 var = var.merge(orthologs, on="ensembl_id", how="left")
 
-# Real genomes have duplicate ensembl_id rows in BioMart exports when a gene
-# has multiple homology-type entries.
+# BioMart repeats an ensembl_id when a gene has multiple homology-type entries.
 dupe_ensembl = var["ensembl_id"].duplicated(keep=False)
 if dupe_ensembl.sum():
-    print(f"NOTE: {dupe_ensembl.sum()} BioMart rows had duplicate ensembl_id "
-          f"— collapsing to one row per gene before continuing")
+    print(f"NOTE: {dupe_ensembl.sum()} BioMart rows had duplicate ensembl_id; "
+          f"collapsed to one row per gene")
     var = (
         var.groupby("ensembl_id", as_index=False)
         .agg({
@@ -66,7 +64,7 @@ if dupe_ensembl.sum():
 
 missing_ortholog = var["human_ortholog"].isna().sum()
 if missing_ortholog:
-    print(f"NOTE: {missing_ortholog} genes had no human ortholog — kept, not dropped")
+    print(f"{missing_ortholog} genes have no human ortholog")
 
 if STUDY_ID in PROTEIN_NA_STUDIES:
     print(f"NOTE: [{STUDY_ID}] {PROTEIN_NA_STUDIES[STUDY_ID]}")
@@ -110,5 +108,5 @@ print(f"Protein mapping yield: {mapped_genes} genes reached by protein data, "
 
 var.to_csv(OUT / f"{STUDY_ID}_var.csv", index=False)
 print(f"[{STUDY_ID}] var table: {var.shape[0]} genes x {var.shape[1]} columns "
-      f"(row count should equal the count matrix's {counts.shape[0]} genes)")
-assert var.shape[0] == counts.shape[0], "var row count drifted from counts — dedup bug"
+      f"(count matrix: {counts.shape[0]} genes)")
+assert var.shape[0] == counts.shape[0], "var row count differs from count matrix"

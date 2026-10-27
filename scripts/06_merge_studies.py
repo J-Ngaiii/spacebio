@@ -1,7 +1,6 @@
 """
 Merge the five per-study schema outputs.
-RNA raw counts (all studies share the same 57,186-gene Ensembl
-spine) + sample metadata.
+RNA raw counts (all studies share the same 57,186-gene Ensembls) + sample metadata.
 """
 import pandas as pd
 import anndata as ad
@@ -44,12 +43,12 @@ for folder in STUDIES:
         overlap = spine.intersection(var.index)
         shared_ref = var_reference.loc[overlap, SHARED_VAR_COLS]
         if not shared_ref.equals(var.loc[overlap, SHARED_VAR_COLS]):
-            raise ValueError(f"{study_id}: shared var columns differ from the reference spine")
+            raise ValueError(f"{study_id}: shared var columns differ from the reference")
         dropped = spine.difference(var.index)
         if len(dropped):
             raise ValueError(
-                f"{study_id}: lacks {len(dropped)} reference-spine genes "
-                f"(e.g. {list(dropped)[:5]}) -- cannot merge without NaN rows"
+                f"{study_id}: lacks {len(dropped)} reference genes "
+                f"(e.g. {list(dropped)[:5]}) cannot merge without NaN rows"
             )
         spine = overlap
         var_shared = var_shared.loc[spine]
@@ -74,11 +73,7 @@ print(f"  studies: {adata.obs['study_id'].value_counts().to_dict()}")
 print(f"  tissues: {adata.obs['tissue'].value_counts().to_dict()}")
 print(f"  missions: {adata.obs['mission'].value_counts().to_dict()}")
 print(f"  arms: {adata.obs['arm'].value_counts().to_dict()}")
-print(f"  paired (has_protein): {adata.obs['has_protein'].sum()} of {adata.shape[0]}")
-
-y = (adata.obs["arm"] == "Flight").astype(int)
-if y.isna().any() or y.nunique() != 2:
-    raise ValueError("Task B label column broken after merge — check arm mapping")
+print(f"  paired: {adata.obs['has_protein'].sum()} of {adata.shape[0]}")
 
 OUT = ROOT / "merged_output"
 OUT.mkdir(exist_ok=True)
@@ -86,4 +81,3 @@ obs_merged.to_csv(OUT / "merged_obs.csv")
 var_shared.to_csv(OUT / "merged_var.csv")
 adata.write_h5ad(OUT / "spacebio_merged_rna.h5ad")
 print(f"\nwrote {OUT}/: merged_obs.csv, merged_var.csv, spacebio_merged_rna.h5ad")
-print("NOTE: protein matrices stay in their per-study output folders (Task A, within-study).")

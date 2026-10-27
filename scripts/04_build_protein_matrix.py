@@ -1,25 +1,13 @@
 """
-Build the protein matrix for an OSD study. Linked by sample_id/animal_id.
+Build the protein matrix for an OSD study, linked to obs by sample_id/animal_id.
 
-Usage: python 04_build_protein_matrix.py [STUDY_ID]
+Channel-to-sample mapping comes from the ISA proteomics assay file
+(a_OSD-<id>_protein-expression-profiling_*.txt):
+  - channel column ("Label" or "Labeled Extract Name"): TMT channel per sample
+  - run column ("Parameter Value[Run]" or "Comment[Run Number]"): plex
 
-CHANNEL->SAMPLE SOURCE:
-The TMT-labels xlsx is a peptide-yield worksheet and doesn't
-contain channel assignments. Refer to ISA archive's
-proteomics assay file (a_OSD-<id>_protein-expression-profiling_*.txt):
- - the channel column ("Label" or "Labeled Extract Name", depending on
- study) gives each sample's TMT channel
- - the run-identity column ("Parameter Value[Run]" or "Comment[Run Number]")
- gives the plex.
-Rows whose Sample Name contains Pool/Empty are dropped (reference channels,
-pool channels, empty wells). Non-sample status is decided by the ISA Sample
-Name, never by channel number (OSD-137 puts animal B1 on 129C).
-
-The 131 reference is a pool of the study's animals. Ratio-to-131 values are
-relative to the cohort mean.
-
-Protein tables are matched to plexes via the ISA raw-file stem when recorded
-(OSD-137), else the run digit in the filename (OSD-105/101/102)
+Values are ratios to the 131 reference channel, a pool of the study's animals,
+so they are relative to the cohort mean.
 """
 import sys
 import re
@@ -32,10 +20,10 @@ STUDY_ID = sys.argv[1] if len(sys.argv) > 1 else "OSD-105"
 DATA_LIMITS = {
     "OSD-48": (
         "OSD-48's processed proteomics (GLDS-48_proteomics_RR1-NASA.processed.tar.gz) "
-        "contains NO per-animal data: both TargetProtein.xlsx exports report only "
+        "contains no per-animal data: both TargetProtein.xlsx exports report only "
         "pool-level ratios (NASA FLT / NASA GC / BA Pool vs Pool), despite the ISA "
         "showing per-animal TMT channels. Per-animal abundances are locked in the "
-        "proprietary .msf/.pdResult files -- recoverable only by raw reprocessing. "
+        "proprietary .msf/.pdResult files. "
         "OSD-48 therefore cannot enter the per-sample paired benchmark; it supports "
         "only a pool-level FLT-vs-GC comparison."
     ),
@@ -51,7 +39,7 @@ CHANNEL_RE = re.compile(r"^(126|127[NC]|128[NC]|129[NC]|130[NC]|131)$")
 # --- Step 1: locate the ISA zip and its proteomics assay file ---
 isa_zips = list(RAW.glob("*.zip"))
 if len(isa_zips) != 1:
-    raise FileNotFoundError(f"Expected exactly 1 zip (the ISA archive) in {RAW}, found {isa_zips}")
+    raise FileNotFoundError(f"Expected exactly 1 zip in {RAW}, found {isa_zips}")
 with zipfile.ZipFile(isa_zips[0]) as z:
     assay_names = [n for n in z.namelist() if "protein-expression-profiling" in n]
     if len(assay_names) != 1:
@@ -59,7 +47,7 @@ with zipfile.ZipFile(isa_zips[0]) as z:
             f"Expected exactly 1 protein-expression assay file inside {isa_zips[0].name}, "
             f"found {assay_names}"
         )
-    isa = pd.read_csv(z.open(assay_names[0]), sep="	")
+    isa = pd.read_csv(z.open(assay_names[0]), sep="\t")
 
 # --- Step 2: channel & plex map from the ISA assay file ---
 def find_channel_column(isa):
@@ -88,9 +76,9 @@ channel_map["tmt_channel"] = channel_map["tmt_channel"].astype(str).str.strip()
 channel_map = channel_map[~channel_map["Sample Name"].str.contains("Pool|Empty", case=False)]
 channel_map["animal_id"] = channel_map["Sample Name"].str.extract(r"_([A-Z]+\d+)$")
 if channel_map["animal_id"].isna().any():
-    raise ValueError("ISA sample names did not yield animal IDs -- check naming")
+    raise ValueError("ISA sample names did not yield animal IDs")
 if ~channel_map["tmt_channel"].str.match(CHANNEL_RE).all():
-    raise ValueError("Animal sample mapped to a non-channel value -- check ISA")
+    raise ValueError("Animal sample mapped to a non-channel value")
 
 # Plex identity comes from the ISA run column
 channel_map["run_norm"] = channel_map["isa_run"].astype(str).str.strip().str.replace(" ", "").str.upper()
@@ -103,7 +91,7 @@ na_mask = channel_map["run_norm"].eq("NOTAPPLICABLE")
 if na_mask.any():
     dropped = channel_map[na_mask]["animal_id"].tolist()
     print(f"NOTE: {len(dropped)} ISA samples have no MS run group (not in this "
-          f"study's proteomics tarball) -- excluded: {dropped}")
+          f"study's proteomics tarball); excluded: {dropped}")
     channel_map = channel_map[~na_mask]
 channel_map["tmt_plex"] = "plex_" + channel_map["run_num"]
 if channel_map["tmt_plex"].isna().any():
@@ -116,12 +104,12 @@ for plex, grp in channel_map.groupby("tmt_plex"):
 n_plexes = channel_map["tmt_plex"].nunique()
 
 # --- Step 3: map each TargetProtein table to its plex ---
-# Every plex uses the same channel set. Two mechanisms, in order:
+# Every plex uses the same channel set, so files are matched in order by:
 # 1. If the ISA records per-plex raw-file stems (OSD-137:
 #    '..._G1_B3_Frac_*.raw' for run 1), match the processed filename
 #    against the stem.
 # 2. Else, read the run digit from the protein filename
-#    ('..._TA_1_TargetProtein.txt' -> run 1). Verified for OSD-105/101/102.
+#    ('..._TA_1_TargetProtein.txt' -> run 1). Used for OSD-105/101/102.
 # Group-letter studies (OSD-48): the ISA group value ("GROUPB") appears in
 # the protein filename itself.
 protein_files = sorted(RAW.glob("*_TargetProtein.txt")) + sorted(RAW.glob("*_TargetProtein.xlsx"))
@@ -186,7 +174,7 @@ for path, plex in file_to_plex.items():
     if path.suffix == ".xlsx":
         tab = pd.read_excel(path)
     else:
-        tab = pd.read_csv(path, sep="	")
+        tab = pd.read_csv(path, sep="\t")
     tab["gene_symbol"] = tab["Description"].str.extract(r"GN=(\S+)")
     plex_map = channel_map[channel_map["tmt_plex"] == plex]
     chan_to_sample = dict(zip(plex_map["tmt_channel"], plex_map["Sample Name"]))
@@ -224,17 +212,17 @@ sample_columns = set(protein_long.columns) - {"gene_symbol", "tmt_plex"}
 expected = set(obs["sample_id"])
 if expected != sample_columns:
     raise ValueError(
-        f"Sample ID mismatch between obs and protein matrix."
-        f"  In obs but not protein: {expected - sample_columns}"
+        f"Sample ID mismatch between obs and protein matrix.\n"
+        f"  In obs but not protein: {expected - sample_columns}\n"
         f"  In protein but not obs: {sample_columns - expected}"
     )
 
 # Reorder columns to obs row order
 protein_matrix = protein_matrix[obs["sample_id"]]
 
+# Stored separately from the expression matrix; linked by sample_id.
 protein_matrix.to_csv(OUT / f"{STUDY_ID}_protein_matrix.csv")
 print(f"[{STUDY_ID}] protein matrix: {protein_matrix.shape[0]} gene-plex rows "
       f"x {len(sample_columns)} sample columns")
 print(protein_long.groupby("tmt_plex").size().rename("rows per plex").to_string())
-print("obs updated with resolved tmt_plex/tmt_channel.")
-print("Saved separately from expression matrix -- linked by sample_id, not merged.")
+print("obs updated with tmt_plex/tmt_channel")

@@ -1,6 +1,5 @@
 """
 Build the sample table (.obs) for an OSD study. One row per animal x tissue x assay.
-Usage: python 01_build_obs.py [STUDY_ID]
 """
 import sys
 import pandas as pd
@@ -95,7 +94,7 @@ STUDY_CONFIGS = {
         "mission": "MHU-2",
         "spacecraft": "SpaceX-12",
         "runsheet": "GLDS-238_rna_seq_bulkRNASeq_v2_runsheet.csv",
-        "confounds": ["diet arm (JC vs JCwFOS) is confounded with housing; VIV arm excluded from Task B"],
+        "confounds": ["diet arm (JC vs JCwFOS) is confounded with housing"],
     },
     "OSD-239": {
         "pattern": re.compile(
@@ -107,7 +106,7 @@ STUDY_CONFIGS = {
         "mission": "MHU-2",
         "spacecraft": "SpaceX-12",
         "runsheet": "GLDS-239_rna_seq_bulkRNASeq_v2_runsheet.csv",
-        "confounds": ["diet arm (JC vs JCwFOS); VIV arm excluded from Task B"],
+        "confounds": ["diet arm (JC vs JCwFOS)"],
     },
     "OSD-243": {
         "pattern": re.compile(
@@ -143,7 +142,7 @@ STUDY_CONFIGS = {
         "mission": "RR-7",
         "spacecraft": "SpaceX-15",
         "runsheet": "GLDS-254_rna_seq_bulkRNASeq_v2_runsheet.csv",
-        "confounds": ["two strains by design (C57BL/6J, C3H/HeJ); VIV arm excluded from Task B"],
+        "confounds": ["two strains by design (C57BL/6J, C3H/HeJ)"],
     },
     "OSD-289": {
         "pattern": re.compile(
@@ -157,7 +156,7 @@ STUDY_CONFIGS = {
         "runsheet": "GLDS-289_rna_seq_bulkRNASeq_v2_runsheet.csv",
         "animal_from_source": re.compile(r"^MHU\d+_(?P<animal_code>.+)$"),
         "arm_source": "factor_value",
-        "confounds": ["MHU-1: arm == strain (FLT=C57-6J, GC=C57-6CR) -- do not pool MHU-1 arms for strain-sensitive analyses"],
+        "confounds": ["MHU-1: arm == strain (FLT=C57-6J, GC=C57-6CR)"],
     },
     "OSD-397": {
         "pattern": re.compile(r"^(?P<animal_code>M\d+)$"),
@@ -166,7 +165,7 @@ STUDY_CONFIGS = {
         "spacecraft": "SpaceX-4",
         "runsheet": "GLDS-397_rna_seq_bulkRNASeq_v2_runsheet.csv",
         "tissue_override": "retina",
-        "confounds": ["arm not parseable from name -- taken from runsheet Factor Value (no independent cross-check)"],
+        "confounds": ["arm taken from runsheet Factor Value"],
     },
     "OSD-421": {
         "pattern": re.compile(
@@ -203,7 +202,7 @@ STUDY_CONFIGS = {
 }
 STUDY_ID = sys.argv[1] if len(sys.argv) > 1 else "OSD-105"
 if STUDY_ID not in STUDY_CONFIGS:
-    raise KeyError(f"No STUDY_CONFIGS entry for {STUDY_ID} — add one, don't guess")
+    raise KeyError(f"No STUDY_CONFIGS entry for {STUDY_ID}")
 config = STUDY_CONFIGS[STUDY_ID]
 
 runsheet = pd.read_csv(RAW / config["runsheet"])
@@ -239,7 +238,7 @@ if "animal_from_source" in config:
     ext = src.astype(str).str.extract(config["animal_from_source"])
     obs["animal_id"] = ext["animal_code"].values
     if obs["animal_id"].isna().any():
-        raise ValueError("Source Name did not yield animal IDs -- check config regex")
+        raise ValueError("Source Name did not yield animal IDs.")
 elif "animal_code" in obs.columns:
     obs["animal_id"] = obs["animal_code"]
     obs = obs.drop(columns=["animal_code"])
@@ -260,7 +259,7 @@ if pres_col:
     obs["preservation_method"] = obs[pres_col].map(pmap)
     obs = obs.drop(columns=[pres_col])
     if obs["preservation_method"].isna().any():
-        raise ValueError(f"Unmapped {pres_col} token — extend the map, don't guess")
+        raise ValueError(f"Unmapped {pres_col} token")
     factor_col = next((c for c in runsheet.columns if "Dissection Condition" in c), None)
     if factor_col:
         dc = runsheet.loc[obs.index, factor_col].map(
@@ -269,8 +268,8 @@ if pres_col:
         lar_mask = obs["preservation_method"] == "upon_euthanasia"
         if (obs.loc[lar_mask, "preservation_method"].values != dc[lar_mask].values).any():
             raise ValueError(
-                "Parsed dissection token disagrees with runsheet "
-                "Factor Value[Dissection Condition] — look before proceeding"
+                "Parsed dissection condition disagrees with runsheet "
+                "Factor Value[Dissection Condition]"
             )
 
 TISSUE_MAP = {
@@ -294,13 +293,13 @@ ARM_MAP = {"FLT": "Flight", "GC": "Ground.Control", "VC": "Vivarium",
 if "tissue_code" in obs.columns:
     obs["tissue"] = obs["tissue_code"].map(TISSUE_MAP)
 else:
-    obs["tissue"] = config["tissue_override"]  # OSD-397: names carry no tissue
+    obs["tissue"] = config["tissue_override"]
 unmapped_tissue = obs[obs["tissue"].isna()]["sample_id"].tolist()
 if unmapped_tissue:
     codes = obs.loc[obs["tissue"].isna()].get(
         "tissue_code", pd.Series(config.get("tissue_override"), index=obs.index)
     ).unique()
-    raise ValueError(f"Unmapped tissue codes {list(codes)} in {unmapped_tissue[:5]} — add to TISSUE_MAP")
+    raise ValueError(f"Unmapped tissue codes {list(codes)} in {unmapped_tissue[:5]}; add to TISSUE_MAP")
 
 FACTOR_VALUE_MAP = {
     "Space Flight": "Flight",
@@ -320,7 +319,7 @@ elif "arm_code" in obs.columns:
     obs["arm"] = obs["arm_code"].map(ARM_MAP)
     unmapped_arm = obs[obs["arm"].isna()]["arm_code"].unique()
     if len(unmapped_arm):
-        raise ValueError(f"Unmapped arm codes {list(unmapped_arm)} — add to ARM_MAP, don't guess")
+        raise ValueError(f"Unmapped arm codes {list(unmapped_arm)}; add to ARM_MAP")
     mismatches = obs[obs["arm"] != obs["arm_from_factor_value"]]
     if len(mismatches):
         raise ValueError(
@@ -347,7 +346,6 @@ else:
     obs["mission"] = config["mission"]
 obs["spacecraft"] = config["spacecraft"]
 
-# Extra design tokens parsed from names (kept as covariates)
 for tok, col in [("gravity", "gravity_condition"), ("diet", "diet"), ("duration", "flight_duration")]:
     if tok in obs.columns:
         obs[col] = obs[tok]
