@@ -10,9 +10,9 @@ import pandas as pd
 import torch
 from bulkformer import extract_features
 from bulkformer.preprocessing import align_to_vocab, normalize_data
-from sklearn.model_selection import KFold
 from torch.utils.data import DataLoader, TensorDataset
 
+from src.evaluation.evaluate import kfold_splits, load_protein_targets, masked_mse, per_protein_pearson, pooled_pearson, zscore_stats
 from src.models.bulkformer import BulkFormerRegressor, load_pretrained_bulkformer, protein_head
 from src.training.train_conf.bulkformer_config import bulkformer_train_config
 
@@ -23,30 +23,6 @@ def _config_warnings(config: bulkformer_train_config):
         raise ValueError("Invalid learning rate, weight decay or dropout.")
     if config.wandb_mode not in {"online", "offline", "disabled"}:
         raise ValueError("wandb_mode must be online, offline or disabled.")
-
-def masked_mse(predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-    """MSE over measured proteins only; NaN targets were not measured and are skipped."""
-    measured = ~torch.isnan(targets)
-    if not measured.any():
-        return predictions.sum() * 0.0
-    return ((predictions[measured] - targets[measured]) ** 2).mean()
-
-def per_protein_pearson(predictions: np.ndarray, targets: np.ndarray) -> np.ndarray:
-    """Pearson r per protein across samples, using measured values only; NaN where it is undefined."""
-    scores = np.full(targets.shape[1], np.nan)
-    for j in range(targets.shape[1]):
-        measured = ~np.isnan(targets[:, j])
-        if measured.sum() < 3 or targets[measured, j].std() == 0 or predictions[measured, j].std() == 0:
-            continue
-        scores[j] = np.corrcoef(predictions[measured, j], targets[measured, j])[0, 1]
-    return scores
-
-def pooled_pearson(predictions: np.ndarray, targets: np.ndarray) -> float:
-    """One Pearson r over every measured (sample, protein) value; still defined when each protein has few values in a fold."""
-    measured = ~np.isnan(targets)
-    if measured.sum() < 3 or targets[measured].std() == 0 or predictions[measured].std() == 0:
-        return float("nan")
-    return float(np.corrcoef(predictions[measured], targets[measured])[0, 1])
 
 def predict(model: torch.nn.Module, inputs: torch.Tensor, batch_size: int, device: torch.device) -> torch.Tensor:
     """Run the model in batches so large validation sets fit in GPU memory."""
@@ -63,21 +39,13 @@ def train_bulkformer(adata: ad.AnnData, config: bulkformer_train_config | None =
 
     _config_warnings(config)
 
-    if config.protein_key not in adata.obsm:
-        raise ValueError(f"adata.obsm[{config.protein_key!r}] is missing; prepare the data with prep_bulkformer.")
-
     X = np.asarray(adata.X, dtype=np.float32)
     if not np.isfinite(X).all() or (X < 0).any():
         raise ValueError("RNA counts must be finite and nonnegative.")
     if len(X) < config.cv_folds:
         raise ValueError("At least cv_folds samples are required.")
 
-    Y = np.asarray(adata.obsm[config.protein_key], dtype=np.float64)
-    if config.log2_protein:
-        if (Y[~np.isnan(Y)] <= 0).any():
-            raise ValueError("log2_protein needs positive protein values; set log2_protein=False if they are already on a log scale.")
-        Y = np.log2(Y)
-    Y = Y.astype(np.float32)
+    Y = load_protein_targets(adata, config.protein_key, log2=config.log2_protein)
 
     backbone = load_pretrained_bulkformer(config.checkpoint)
     # BulkFormer expects log TPM in its own gene order; genes it knows but the data lacks are filled with its mask value.
@@ -108,10 +76,7 @@ def train_bulkformer(adata: ad.AnnData, config: bulkformer_train_config | None =
         torch.manual_seed(seed)
         np.random.seed(seed)
 
-        # Z-score each protein with training-fold statistics only, so validation values never leak into training.
-        mean = np.nan_to_num(np.nanmean(Y[train_index], axis=0))
-        std = np.nanstd(Y[train_index], axis=0)
-        std[~(std > 0)] = 1.0
+        mean, std = zscore_stats(Y[train_index])
         train_Y = torch.from_numpy(((Y[train_index] - mean) / std).astype(np.float32))
 
         loader = DataLoader(TensorDataset(inputs[train_index], train_Y), batch_size=config.batch_size, shuffle=True, generator=torch.Generator().manual_seed(seed))
@@ -147,9 +112,7 @@ def train_bulkformer(adata: ad.AnnData, config: bulkformer_train_config | None =
 
     scores, folds = [], []
     oof = np.full(Y.shape, np.nan, dtype=np.float32)
-    # TODO: replace random KFold with the team's shared held-out split (e.g. by study, tissue or plex).
-    cv = KFold(n_splits=config.cv_folds, shuffle=True, random_state=config.random_state)
-    for fold, (train_index, val_index) in enumerate(cv.split(X), start=1):
+    for fold, (train_index, val_index) in enumerate(kfold_splits(len(X), config.cv_folds, config.random_state), start=1):
         _, _, predictions, score = fit(train_index, val_index, f"fold-{fold}", config.random_state + fold)
         oof[val_index] = predictions
         scores.append(score)
