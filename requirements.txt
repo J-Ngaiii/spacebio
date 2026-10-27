@@ -9,3 +9,4 @@ requests
 h5py
 anndata>=0.12,<0.13
 wandb
+bulkformer @ git+https://github.com/zhfanrui/BulkFormer_hf@42fb0b6b5d69c6d6091837ecac9b259b560dbc19

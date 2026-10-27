@@ -16,6 +16,7 @@ setup(
         'wandb',
         'requests',
         'ipykernel',
+        'bulkformer @ git+https://github.com/zhfanrui/BulkFormer_hf@42fb0b6b5d69c6d6091837ecac9b259b560dbc19',
     ],
     entry_points={
         'console_scripts': [
