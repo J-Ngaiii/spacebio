@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import anndata as ad
+from pathlib import Path
 from typing import Any
 
 
@@ -108,8 +109,31 @@ def prep_single_hyena(data: Any, **kwargs) -> Any:
     raise NotImplementedError("Implement single Hyena preprocessing.")
 
 
-def prep_bulkformer(data: dict[str, pd.DataFrame], **kwargs) -> ad.AnnData:
-    """Return RNA + protein AnnData with genes aligned to the BulkFormer gene vocabulary."""
-    # TODO: start from prep_logreg(data, include_protein=True), map mouse Ensembl IDs to one-to-one
-    # human orthologs, then reorder genes to the checkpoint's gene list and fill genes it lacks.
-    raise NotImplementedError("Implement BulkFormer preprocessing.")
+ORTHOLOG_TABLE = Path(__file__).resolve().parents[2] / "data" / "reference" / "mouse_human_orthologs.tsv"
+
+
+def prep_bulkformer(data: dict[str, pd.DataFrame], *, ortholog_table: str | Path = ORTHOLOG_TABLE, **kwargs) -> ad.AnnData:
+    """Raw-count RNA + protein AnnData with mouse genes renamed to their one-to-one human Ensembl IDs.
+
+    BulkFormer only knows human genes. train_bulkformer converts these counts to log TPM and
+    reorders them to the checkpoint's gene list; mouse genes without a one-to-one ortholog are dropped.
+    """
+    adata = prep_logreg(data, include_protein=True, **kwargs)
+
+    orthologs = pd.read_csv(ortholog_table, sep="\t")
+    required = {"Gene stable ID", "Human gene stable ID", "Human homology type"}
+    if not required <= set(orthologs.columns):
+        raise ValueError(f"{ortholog_table} needs columns {sorted(required)}; re-export it from Ensembl BioMart with 'Human gene stable ID' added.")
+
+    one2one = orthologs[orthologs["Human homology type"].eq("ortholog_one2one")].dropna(subset=["Human gene stable ID"])
+    # One-to-one should already be unique both ways; drop any ID that still repeats rather than guess.
+    one2one = one2one[~one2one["Gene stable ID"].duplicated(keep=False) & ~one2one["Human gene stable ID"].duplicated(keep=False)]
+    mouse_to_human = one2one.set_index("Gene stable ID")["Human gene stable ID"]
+
+    keep = adata.var_names.isin(mouse_to_human.index)
+    if not keep.any():
+        raise ValueError("No genes have a one-to-one human ortholog; check that var_names are mouse Ensembl IDs.")
+    adata = adata[:, keep].copy()
+    adata.var["mouse_ensembl_id"] = adata.var_names
+    adata.var_names = mouse_to_human.loc[adata.var_names].to_numpy()
+    return adata
