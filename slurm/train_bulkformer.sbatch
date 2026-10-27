@@ -1,6 +1,8 @@
 #!/bin/bash
 # Fine-tune BulkFormer on one Savio GPU. Submit from the repository root:
-#   sbatch slurm/train_bulkformer.sbatch --checkpoint-path /path/to/checkpoint.pt [other train_bulkformer.py options]
+#   sbatch slurm/train_bulkformer.sbatch [train_bulkformer.py options, e.g. --checkpoint zhfanrui/BulkFormer-147M]
+# Download the checkpoint once on a login node first, in case compute nodes have no internet:
+#   huggingface-cli download zhfanrui/BulkFormer-37M
 # Command-line flags override the #SBATCH lines, e.g. sbatch --time=04:00:00 slurm/train_bulkformer.sbatch
 #SBATCH --job-name=spacebio-bulkformer
 #SBATCH --account=ic_cdss170fall
