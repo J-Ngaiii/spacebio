@@ -8,6 +8,7 @@ class pca_train_config:
     cv_folds: int = 3
     random_state: int = 42
 
+    normalize_rna: bool = True  # True: X is raw counts, converted to log TPM; False: X is already normalized (e.g. per-source z-scores) and used as-is
     protein_key: str = "protein"  # adata.obsm key holding the sample x protein matrix
     log2_protein: bool = True  # OSDR TMT values are ratios; log2 makes them symmetric before z-scoring
 

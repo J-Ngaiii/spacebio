@@ -85,6 +85,22 @@ class TrainPcaTests(unittest.TestCase):
         self.assertTrue(np.isfinite(metrics["cv_scores"]).all())
         self.assertGreater(metrics["oof_mean_pearson"], 0.3)
 
+    def test_prenormalized_rna_with_negative_values(self):
+        adata = synthetic_adata(n_samples=24)
+        log_counts = np.log1p(adata.X)
+        adata.X = (log_counts - log_counts.mean(axis=0)) / log_counts.std(axis=0)  # per-gene z-scores, like the human corpus
+        with self.assertRaises(ValueError):
+            train_pca(adata, pca_train_config(wandb_mode="disabled"))
+        result = train_pca(adata, pca_train_config(n_components=10, normalize_rna=False, wandb_mode="disabled"))
+        self.assertGreater(result["metrics"]["oof_mean_pearson"], 0.3)
+        self.assertTrue(result["preprocessing"].startswith("prenormalized_rna"))
+
+    def test_missing_rna_values_rejected(self):
+        adata = synthetic_adata()
+        adata.X[0, 0] = np.nan
+        with self.assertRaises(ValueError):
+            train_pca(adata, pca_train_config(normalize_rna=False, wandb_mode="disabled"))
+
     def test_records_folds_and_predictions(self):
         adata = synthetic_adata()
         result = train_pca(adata, pca_train_config(wandb_mode="disabled"))

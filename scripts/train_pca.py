@@ -37,6 +37,7 @@ def main():
     for name, kind in (("n_components", int), ("cv_folds", int), ("random_state", int), ("protein_key", str), ("wandb_project", str), ("wandb_entity", str), ("run_group", str)):
         parser.add_argument("--" + name.replace("_", "-"), type=kind, default=getattr(defaults, name))
     parser.add_argument("--alphas", type=float, nargs="+", default=list(defaults.alphas))
+    parser.add_argument("--normalize-rna", action=argparse.BooleanOptionalAction, default=defaults.normalize_rna, help="Use --no-normalize-rna when X is already normalized (e.g. z-scored).")
     parser.add_argument("--log2-protein", action=argparse.BooleanOptionalAction, default=defaults.log2_protein)
     parser.add_argument("--wandb-mode", choices=("online", "offline", "disabled"), default=defaults.wandb_mode)
     args = vars(parser.parse_args())
