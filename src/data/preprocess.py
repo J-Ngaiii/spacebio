@@ -110,15 +110,26 @@ def prep_single_hyena(data: Any, **kwargs) -> Any:
 
 
 ORTHOLOG_TABLE = Path(__file__).resolve().parents[2] / "data" / "reference" / "mouse_human_orthologs.tsv"
+MOUSE_GENE_LENGTHS = Path(__file__).resolve().parents[2] / "data" / "reference" / "mouse_gene_lengths.csv"
 
 
-def prep_bulkformer(data: dict[str, pd.DataFrame], *, ortholog_table: str | Path = ORTHOLOG_TABLE, **kwargs) -> ad.AnnData:
+def prep_bulkformer(data: dict[str, pd.DataFrame], *, ortholog_table: str | Path = ORTHOLOG_TABLE, gene_length_table: str | Path = MOUSE_GENE_LENGTHS, **kwargs) -> ad.AnnData:
     """Raw-count RNA + protein AnnData with mouse genes renamed to their one-to-one human Ensembl IDs.
 
-    BulkFormer only knows human genes. train_bulkformer converts these counts to log TPM and
-    reorders them to the checkpoint's gene list; mouse genes without a one-to-one ortholog are dropped.
+    BulkFormer only knows human genes. layers["log_tpm"] holds log1p(TPM) computed with mouse gene lengths
+    over every mouse gene, before genes without a one-to-one ortholog are dropped; train_bulkformer then
+    reorders genes to the checkpoint's gene list.
     """
+    from bulkformer.preprocessing import normalize_data
+
     adata = prep_logreg(data, include_protein=True, **kwargs)
+
+    # TPM is each gene's share of the whole transcriptome, so compute it before dropping genes.
+    lengths = pd.read_csv(gene_length_table).set_index("ensembl_id")["length"]
+    counts = pd.DataFrame(adata.X, index=adata.obs_names, columns=adata.var_names)
+    adata.layers["log_tpm"] = normalize_data(counts, gene_length_dict=lengths.to_dict()).to_numpy()
+    # Genes missing from the table (e.g. retired IDs) fall back to 1,000 bp, as in BulkFormer's own preprocessing.
+    adata.uns["genes_without_length"] = int((~adata.var_names.isin(lengths.index)).sum())
 
     orthologs = pd.read_csv(ortholog_table, sep="\t")
     required = {"Gene stable ID", "Human gene stable ID", "Human homology type"}

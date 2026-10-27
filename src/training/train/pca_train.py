@@ -5,10 +5,9 @@ from uuid import uuid4
 import anndata as ad
 
 import numpy as np
-import pandas as pd
 import torch
-from bulkformer.preprocessing import normalize_data
 
+from src.features.build_features import rna_log_tpm
 from src.evaluation.evaluate import kfold_splits, load_protein_targets, masked_mse, per_protein_pearson, pooled_pearson, zscore_stats
 from src.models.pca import PCARidge
 from src.training.train_conf.pca_config import pca_train_config
@@ -37,8 +36,8 @@ def train_pca(adata: ad.AnnData, config: pca_train_config | None = None) -> dict
 
     Y = load_protein_targets(adata, config.protein_key, log2=config.log2_protein)
     if config.normalize_rna:
-        # Same RNA input as BulkFormer: log TPM over the same one-to-one mapped genes. It is per sample, so it cannot leak across folds.
-        X = normalize_data(pd.DataFrame(X, index=adata.obs_names, columns=adata.var_names)).to_numpy(dtype=np.float64)
+        # Same RNA input as BulkFormer. TPM is per sample, so it cannot leak across folds.
+        X = rna_log_tpm(adata)
     group = config.run_group or f"pca-{uuid4().hex[:12]}"
     wandb = None
     if config.wandb_mode != "disabled":
@@ -75,4 +74,4 @@ def train_pca(adata: ad.AnnData, config: pca_train_config | None = None) -> dict
         folds.append({"train_sample_ids": adata.obs_names[train_index].tolist(), "validation_sample_ids": adata.obs_names[val_index].tolist()})
     model, protein_scaling, _, _ = fit(np.arange(len(X)), None, "final-refit")
     oof_pearson = per_protein_pearson(oof, Y)
-    return {"model": model, "protein_scaling": protein_scaling, "architecture": {"n_components": model.n_components_, "explained_variance": float(model.pca.explained_variance_ratio_.sum())}, "preprocessing": f"{'bulkformer_log_tpm' if config.normalize_rna else 'prenormalized_rna'}_then_train_fold_standard_scaler; {'log2_protein_then_' if config.log2_protein else 'protein_'}train_fold_zscore", "feature_names": adata.var_names.tolist(), "protein_features": adata.uns.get("protein_features"), "sample_ids": adata.obs_names.tolist(), "oof_predictions": oof.tolist(), "folds": folds, "metrics": {"cv_scores": scores, "cv_mean": float(np.nanmean(scores)), "oof_per_protein_pearson": oof_pearson.tolist(), "oof_mean_pearson": float(np.nanmean(oof_pearson))}, "config": asdict(config), "wandb_group": group}
+    return {"model": model, "protein_scaling": protein_scaling, "architecture": {"n_components": model.n_components_, "explained_variance": float(model.pca.explained_variance_ratio_.sum())}, "rna_gene_lengths": ("prep_species_lengths" if "log_tpm" in adata.layers else "bulkformer_human_lengths") if config.normalize_rna else None, "preprocessing": f"{'log_tpm' if config.normalize_rna else 'prenormalized_rna'}_then_train_fold_standard_scaler; {'log2_protein_then_' if config.log2_protein else 'protein_'}train_fold_zscore", "feature_names": adata.var_names.tolist(), "protein_features": adata.uns.get("protein_features"), "sample_ids": adata.obs_names.tolist(), "oof_predictions": oof.tolist(), "folds": folds, "metrics": {"cv_scores": scores, "cv_mean": float(np.nanmean(scores)), "oof_per_protein_pearson": oof_pearson.tolist(), "oof_mean_pearson": float(np.nanmean(oof_pearson))}, "config": asdict(config), "wandb_group": group}

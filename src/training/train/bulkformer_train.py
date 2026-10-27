@@ -9,9 +9,10 @@ import numpy as np
 import pandas as pd
 import torch
 from bulkformer import extract_features
-from bulkformer.preprocessing import align_to_vocab, normalize_data
+from bulkformer.preprocessing import align_to_vocab
 from torch.utils.data import DataLoader, TensorDataset
 
+from src.features.build_features import rna_log_tpm
 from src.evaluation.evaluate import kfold_splits, load_protein_targets, masked_mse, per_protein_pearson, pooled_pearson, zscore_stats
 from src.models.bulkformer import BulkFormerRegressor, load_pretrained_bulkformer, protein_head
 from src.training.train_conf.bulkformer_config import bulkformer_train_config
@@ -49,7 +50,7 @@ def train_bulkformer(adata: ad.AnnData, config: bulkformer_train_config | None =
 
     backbone = load_pretrained_bulkformer(config.checkpoint)
     # BulkFormer expects log TPM in its own gene order; genes it knows but the data lacks are filled with its mask value.
-    log_tpm = normalize_data(pd.DataFrame(X, index=adata.obs_names, columns=adata.var_names))
+    log_tpm = pd.DataFrame(rna_log_tpm(adata), index=adata.obs_names, columns=adata.var_names)
     aligned, mask_prob = align_to_vocab(log_tpm, backbone.config.gene_ids, mask_token_value=backbone.config.mask_token_value)
     expr = aligned.to_numpy(dtype=np.float32)
     embed_dim = backbone.config.dim + 3
@@ -121,4 +122,4 @@ def train_bulkformer(adata: ad.AnnData, config: bulkformer_train_config | None =
     model, protein_scaling, _, _ = fit(np.arange(len(X)), None, "final-refit", config.random_state)
     oof_pearson = per_protein_pearson(oof, Y)
     # With a frozen backbone the model is just the head; the backbone is unchanged from the checkpoint.
-    return {"state_dict": model.state_dict(), "saved_weights": "head" if config.freeze_backbone else "full", "protein_scaling": protein_scaling, "architecture": {"checkpoint": config.checkpoint, "embed_dim": embed_dim, "output_dim": Y.shape[1], "dropout": config.dropout}, "mask_prob": mask_prob, "preprocessing": "bulkformer_log_tpm_aligned_to_vocab; log2_protein_then_train_fold_zscore" if config.log2_protein else "bulkformer_log_tpm_aligned_to_vocab; train_fold_protein_zscore", "feature_names": adata.var_names.tolist(), "protein_features": adata.uns.get("protein_features"), "sample_ids": adata.obs_names.tolist(), "oof_predictions": oof.tolist(), "folds": folds, "metrics": {"cv_scores": scores, "cv_mean": float(np.nanmean(scores)), "vocab_coverage": 1 - mask_prob, "oof_per_protein_pearson": oof_pearson.tolist(), "oof_mean_pearson": float(np.nanmean(oof_pearson))}, "config": asdict(config), "wandb_group": group}
+    return {"state_dict": model.state_dict(), "saved_weights": "head" if config.freeze_backbone else "full", "protein_scaling": protein_scaling, "architecture": {"checkpoint": config.checkpoint, "embed_dim": embed_dim, "output_dim": Y.shape[1], "dropout": config.dropout}, "mask_prob": mask_prob, "rna_gene_lengths": "prep_species_lengths" if "log_tpm" in adata.layers else "bulkformer_human_lengths", "preprocessing": "log_tpm_aligned_to_vocab; log2_protein_then_train_fold_zscore" if config.log2_protein else "log_tpm_aligned_to_vocab; train_fold_protein_zscore", "feature_names": adata.var_names.tolist(), "protein_features": adata.uns.get("protein_features"), "sample_ids": adata.obs_names.tolist(), "oof_predictions": oof.tolist(), "folds": folds, "metrics": {"cv_scores": scores, "cv_mean": float(np.nanmean(scores)), "vocab_coverage": 1 - mask_prob, "oof_per_protein_pearson": oof_pearson.tolist(), "oof_mean_pearson": float(np.nanmean(oof_pearson))}, "config": asdict(config), "wandb_group": group}

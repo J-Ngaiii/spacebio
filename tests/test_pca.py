@@ -2,6 +2,7 @@
 Run with python -m unittest tests.test_pca -v."""
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 REPO = Path(__file__).resolve().parents[1]
@@ -9,10 +10,12 @@ sys.path.insert(0, str(REPO))
 
 import anndata as ad
 import numpy as np
+import pandas as pd
 
 from src.config.config import MODELS, TRAINERS
 from src.data import preprocess
 from src.evaluation.evaluate import kfold_splits, load_protein_targets, pooled_pearson, zscore_stats
+from src.features.build_features import rna_log_tpm
 from src.models.pca import PCARidge
 from src.training.train.pca_train import train_pca
 from src.training.train_conf.pca_config import pca_train_config
@@ -75,6 +78,31 @@ class ProtocolTests(unittest.TestCase):
     def test_pooled_pearson_ignores_nan(self):
         targets = np.array([[1.0, np.nan], [2.0, 4.0], [3.0, 6.0]])
         self.assertAlmostEqual(pooled_pearson(targets * 2, targets), 1.0)
+
+
+class PrepTests(unittest.TestCase):
+    def test_tpm_uses_mouse_lengths_over_all_genes_before_ortholog_filter(self):
+        samples, genes = ["s1", "s2", "s3"], ["ENSMUSG01", "ENSMUSG02", "ENSMUSG03"]
+        counts = np.array([[100.0, 200.0, 300.0], [50.0, 50.0, 50.0], [10.0, 0.0, 5.0]])  # genes x samples
+        data = {
+            "X_obs.csv": pd.DataFrame({"sample_id": samples, "arm": ["Flight", "Ground.Control", "Flight"]}),
+            "X_var.csv": pd.DataFrame({"ensembl_id": genes}),
+            "X_expression_counts.csv": pd.DataFrame(counts, columns=samples).assign(gene=genes)[["gene", *samples]],
+            "X_protein_matrix.csv": pd.DataFrame({"gene_symbol": ["P1"], "tmt_plex": ["plex_1"], "s1": [1.0], "s2": [2.0], "s3": [0.5]}),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            orthologs, lengths = Path(tmp) / "orthologs.tsv", Path(tmp) / "lengths.csv"
+            # The third gene has no human ortholog: dropped from the output, but still part of each sample's TPM total.
+            pd.DataFrame({"Gene stable ID": genes[:2], "Human gene stable ID": ["ENSG01", "ENSG02"], "Human homology type": ["ortholog_one2one"] * 2}).to_csv(orthologs, sep="\t", index=False)
+            pd.DataFrame({"ensembl_id": genes, "length": [2000, 500, 1000]}).to_csv(lengths, index=False)
+            adata = preprocess.prep_bulkformer(data, ortholog_table=orthologs, gene_length_table=lengths)
+
+        rate = counts.T / np.array([2.0, 0.5, 1.0])  # counts per kb of mouse gene length
+        expected = np.log1p(rate / rate.sum(axis=1, keepdims=True) * 1e6)[:, :2]
+        self.assertEqual(adata.var_names.tolist(), ["ENSG01", "ENSG02"])
+        np.testing.assert_allclose(adata.layers["log_tpm"], expected)
+        np.testing.assert_allclose(rna_log_tpm(adata), expected)
+        self.assertEqual(adata.uns["genes_without_length"], 0)
 
 
 class TrainPcaTests(unittest.TestCase):
