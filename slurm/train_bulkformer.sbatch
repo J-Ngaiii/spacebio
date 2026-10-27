@@ -6,7 +6,8 @@
 #SBATCH --account=ic_cdss170fall
 #SBATCH --partition=savio3_gpu
 #SBATCH --gres=gpu:A40:1
-#SBATCH --cpus-per-task=4
+#SBATCH --qos=a40_gpu3_normal
+#SBATCH --cpus-per-task=8  # Savio requires 8 CPUs per A40
 #SBATCH --time=02:00:00
 #SBATCH --output=slurm-%j.out
 
