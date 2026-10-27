@@ -123,9 +123,11 @@ Each stage returns a `DataArtifact`: a lightweight handle with `name`, `stage`,
 Current data enters at the interim stage. The NASA puller downloads study
 metadata only, and the standardizers in `preprocess.py` are placeholders.
 
-Models registered in `MODELS`: `logreg` and `simple-mlp` are implemented;
-`pca`, `scgpt-lora`, `scgpt-deepattn`, and `single-hyena` are placeholders that
-raise `NotImplementedError`. Only OSD-105's config entry lists its interim CSV
+Models registered in `MODELS`: `logreg` and `simple-mlp` are implemented
+flight-vs-ground classifiers; `bulkformer` and `pca` predict protein from RNA;
+`scgpt-lora`, `scgpt-deepattn`, and `single-hyena` are placeholders that
+raise `NotImplementedError`. `pca` is the PCA + ridge baseline for `bulkformer`:
+it uses the same genes, folds and metrics (`src/evaluation/evaluate.py`). Only OSD-105's config entry lists its interim CSV
 filenames, so `run_pipe.py` currently works for OSD-105 only.
 
 ## Code layout
