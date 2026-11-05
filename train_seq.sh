@@ -27,7 +27,7 @@ echo "Python: $(which python)"
 nvidia-smi
 
 srun python -m scripts.train_sequences \
-    --data data/processed/sequence/harmonized/harmonized_training_gz.h5ad \
+    --data data/processed/sequence/harmonized/harmonized_training_intersection.h5ad \
     --model performer \
     --depth 1 \
     --epochs 100 \
