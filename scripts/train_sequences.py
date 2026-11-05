@@ -90,7 +90,8 @@ def main():
     parser = argparse.ArgumentParser(description="Train Performer and Hyena models on AnnData")
 
     parser.add_argument("--data", type=Path, default=Path("data/processed/sequence/harmonized/harmonized_training_gz.h5ad"))
-    parser.add_argument("--model", choices=("performer", "hyena", "both"), default="both")
+    parser.add_argument("--model", choices=("performer", "hyena", "both"), default="performer")
+    parser.add_argument("--depth", type=int, default=1)
     parser.add_argument("--target-key", default="protein")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -134,7 +135,7 @@ def main():
         }
 
         if model_name == "performer":
-            config = PerformerConfig(**common)
+            config = PerformerConfig(**common, depth=args.depth)
             trainer = train_performer
         else:
             config = HyenaConfig(**common)
