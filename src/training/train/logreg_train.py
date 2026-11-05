@@ -1,5 +1,3 @@
-# src/training/train/logreg_train.py
-
 import numpy as np
 import anndata as ad
 

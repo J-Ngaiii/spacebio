@@ -79,6 +79,7 @@ def load_data(
     return {
         "X": X,
         "Y": Y,
+        "obs": adata.obs.copy(),
         "sample_ids": adata.obs_names.astype(str).tolist(),
         "gene_names": gene_names,
         "protein_names": protein_names,

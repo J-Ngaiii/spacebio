@@ -9,3 +9,4 @@ requests
 h5py
 anndata>=0.12,<0.13
 wandb
+performer_pytorch

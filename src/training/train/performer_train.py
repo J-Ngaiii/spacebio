@@ -1,11 +1,12 @@
-
 import copy
 import random
 from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
+import wandb
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from torch import nn
@@ -13,6 +14,48 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from src.models.performer import Performer
 from src.training.train_conf.performer_config import PerformerConfig
+
+
+def encode_metadata(obs, columns, fit_idx):
+    """Encode categorical metadata as integer ids.
+
+    Vocabularies are built from the rows in `fit_idx` only (the train split).
+    Index 0 is reserved for missing or unseen categories.
+    """
+    metadata = {}
+    vocabularies = {}
+
+    for column in columns:
+        if column in obs.columns:
+            values = obs[column].astype("string").fillna("<MISSING>")
+        else:
+            values = pd.Series(
+                ["<MISSING>"] * len(obs),
+                index=obs.index,
+                dtype="string",
+            )
+
+        fit_values = values.iloc[fit_idx]
+
+        categories = sorted(
+            value for value in fit_values.unique()
+            if value != "<MISSING>"
+        )
+
+        vocabulary = {
+            value: i + 1
+            for i, value in enumerate(categories)
+        }
+
+        metadata[column] = (
+            values.map(vocabulary)
+            .fillna(0)
+            .to_numpy(dtype=np.int64)
+        )
+
+        vocabularies[column] = vocabulary
+
+    return metadata, vocabularies
 
 
 def train_performer(
@@ -45,6 +88,13 @@ def train_performer(
         raise ValueError("Nonfinite X")
 
     classes = None
+
+    metadata_columns = [
+        "source",
+        "lineage",
+        "tissue",
+        "cancer_type",
+    ]
 
     if cfg.task == "regression":
         Y = np.asarray(Y, dtype=np.float32)
@@ -102,6 +152,18 @@ def train_performer(
         random_state=cfg.seed,
     )
 
+    # Metadata vocabularies are fit on the train split only.
+    metadata, metadata_vocabularies = encode_metadata(
+        data["obs"],
+        metadata_columns,
+        train_idx,
+    )
+
+    metadata_cardinalities = {
+        name: len(vocabulary) + 1
+        for name, vocabulary in metadata_vocabularies.items()
+    }
+
     x_scaler = None
 
     if cfg.standardize_x:
@@ -131,6 +193,7 @@ def train_performer(
         depth=cfg.depth,
         heads=cfg.heads,
         dropout=cfg.dropout,
+        metadata_cardinalities=metadata_cardinalities,
     ).to(device)
 
     optimizer = torch.optim.AdamW(
@@ -152,10 +215,20 @@ def train_performer(
             else torch.float32
         )
 
-        dataset = TensorDataset(
+        tensors = [
             torch.tensor(X[idx], dtype=torch.float32),
             torch.tensor(Y[idx], dtype=y_dtype),
-        )
+        ]
+
+        for name in metadata_columns:
+            tensors.append(
+                torch.tensor(
+                    metadata[name][idx],
+                    dtype=torch.long,
+                )
+            )
+
+        dataset = TensorDataset(*tensors)
 
         return DataLoader(
             dataset,
@@ -167,23 +240,41 @@ def train_performer(
     val_loader = make_loader(val_idx)
     test_loader = make_loader(test_idx)
 
-    def evaluate(loader):
+    def unpack(batch):
+        xb, yb, *metadata_batch = batch
+
+        mb = {
+            name: tensor.to(device)
+            for name, tensor in zip(metadata_columns, metadata_batch)
+        }
+
+        return xb.to(device), yb.to(device), mb
+
+    def evaluate(loader, return_predictions=False):
         model.eval()
         total = 0.0
         count = 0
+        predictions = []
 
         with torch.no_grad():
-            for xb, yb in loader:
-                xb = xb.to(device)
-                yb = yb.to(device)
+            for batch in loader:
+                xb, yb, mb = unpack(batch)
 
-                prediction = model(xb)
+                prediction = model(xb, mb)
                 loss = criterion(prediction, yb)
 
                 total += loss.item() * len(xb)
                 count += len(xb)
 
-        return total / count
+                if return_predictions:
+                    predictions.append(prediction.cpu().numpy())
+
+        mean_loss = total / count
+
+        if return_predictions:
+            return mean_loss, np.concatenate(predictions, axis=0)
+
+        return mean_loss
 
     best_loss = float("inf")
     best_state = None
@@ -196,13 +287,12 @@ def train_performer(
         total = 0.0
         count = 0
 
-        for xb, yb in train_loader:
-            xb = xb.to(device)
-            yb = yb.to(device)
+        for batch in train_loader:
+            xb, yb, mb = unpack(batch)
 
             optimizer.zero_grad(set_to_none=True)
 
-            prediction = model(xb)
+            prediction = model(xb, mb)
             loss = criterion(prediction, yb)
 
             loss.backward()
@@ -251,18 +341,7 @@ def train_performer(
         raise RuntimeError("No successful training epoch")
 
     model.load_state_dict(best_state)
-    test_loss = evaluate(test_loader)
-
-    model.eval()
-    predictions = []
-
-    with torch.no_grad():
-        for xb, _ in test_loader:
-            predictions.append(
-                model(xb.to(device)).cpu().numpy()
-            )
-
-    predictions = np.concatenate(predictions, axis=0)
+    test_loss, predictions = evaluate(test_loader, return_predictions=True)
 
     if cfg.task == "regression":
         actual = Y[test_idx]
@@ -274,6 +353,9 @@ def train_performer(
         metrics = {
             "test_mse": float(np.mean((predictions - actual) ** 2)),
             "test_mae": float(np.mean(np.abs(predictions - actual))),
+            "metadata_columns": metadata_columns,
+            "metadata_vocabularies": metadata_vocabularies,
+            "metadata_cardinalities": metadata_cardinalities,
         }
 
     else:
@@ -303,6 +385,9 @@ def train_performer(
         "sample_ids": data.get("sample_ids"),
         "x_scaler": x_scaler,
         "y_scaler": y_scaler,
+        "metadata_columns": metadata_columns,
+        "metadata_vocabularies": metadata_vocabularies,
+        "metadata_cardinalities": metadata_cardinalities,
         "split_indices": {
             "train": train_idx,
             "val": val_idx,
@@ -329,8 +414,6 @@ def train_performer(
         wandb_run.summary["checkpoint_path"] = str(path)
 
         if wandb_log_model:
-            import wandb
-
             artifact = wandb.Artifact(
                 name=f"{wandb_run.id}-checkpoint",
                 type="model",

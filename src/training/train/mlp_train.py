@@ -1,4 +1,3 @@
-"""RNA-only cross-validation and final refit, with optional W&B tracking."""
 from contextlib import nullcontext
 from dataclasses import asdict
 from uuid import uuid4
