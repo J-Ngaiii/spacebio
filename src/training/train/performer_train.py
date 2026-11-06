@@ -212,30 +212,31 @@ def train_performer(
                 values = Y[train_idx, j]
                 values = values[np.isfinite(values)]
                 y_mean[j] = values.mean()
-                y_std[j] = max(float(values.std()), 1e-6)
+                y_std[j] = max(float(values.std()), 1) # some proteins have sds < 1e6 leading to MSE blow up when we divide by SD
 
                         
-            # DEBUG: Examine target standard deviations.
-            print("Y std min:", np.min(y_std))
-            print("Y std median:", np.median(y_std))
-            print("Y std max:", np.max(y_std))
+            # # DEBUG: Examine target standard deviations.
+            # print("Y std min:", np.min(y_std))
+            # print("Y std median:", np.median(y_std))
+            # print("Y std max:", np.max(y_std))
 
-            print("Proteins with std < 1e-4:", np.sum(y_std < 1e-4))
-            print("Proteins with std < 1e-2:", np.sum(y_std < 1e-2))
+            # print("Proteins with std < 1e-4:", np.sum(y_std < 1e-4))
+            # print("Proteins with std < 1e-2:", np.sum(y_std < 1e-2))
 
-            # DEBUG: Examine standardized validation targets.
-            Y_val_scaled = (
-                Y[val_idx] - y_mean
-            ) / y_std
+            # # DEBUG: Examine standardized validation targets.
+            # Y_val_scaled = (
+            #     Y[val_idx] - y_mean
+            # ) / y_std
 
-            finite = np.isfinite(Y_val_scaled)
-            values = np.abs(Y_val_scaled[finite])
+            # finite = np.isfinite(Y_val_scaled)
+            # values = np.abs(Y_val_scaled[finite])
 
-            print("Validation |Y| median:", np.median(values))
-            print("Validation |Y| p99:", np.percentile(values, 99))
-            print("Validation |Y| max:", np.max(values))
-            print("Validation mean squared Y:", np.mean(values ** 2))
+            # print("Validation |Y| median:", np.median(values))
+            # print("Validation |Y| p99:", np.percentile(values, 99))
+            # print("Validation |Y| max:", np.max(values))
+            # print("Validation mean squared Y:", np.mean(values ** 2))
 
+            
             Y = ((Y - y_mean) / y_std).astype(np.float32)
 
     device = torch.device(
