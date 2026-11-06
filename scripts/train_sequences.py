@@ -123,9 +123,62 @@ def main():
             "learning_rate": args.lr,
             "seed": args.seed,
         }
+        
         if model_name == "performer":
             config = PerformerConfig(**common, depth=args.depth)
             trainer = train_performer
+        else:
+            # RESTORED: Select Hyena trainer when requested.
+            config = HyenaConfig(**common)
+            trainer = train_hyena
 
+        # RESTORED: Define model checkpoint destination.
+        output_path = args.output_dir / f"{model_name}.pt"
+
+        # RESTORED: Initialize W&B run before training.
+        print(f"Initializing W&B for {model_name}...", flush=True)
+
+        run = wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            group=args.wandb_group,
+            name=f"{model_name}-{args.seed}",
+            job_type="training",
+            config={
+                **asdict(config),
+                "architecture": model_name,
+                "dataset": args.data.name,
+                "n_samples": data["X"].shape[0],
+                "n_features": input_dim,
+                "n_targets": output_dim,
+            },
+            mode=args.wandb_mode,
+            reinit="finish_previous",
+        )
+
+        try:
+            # RESTORED: Actually execute the training function.
+            print(f"Starting {model_name} training...", flush=True)
+
+            metrics = trainer(
+                data=data,
+                config=config,
+                output_path=str(output_path),
+                wandb_run=run,
+                wandb_log_model=args.wandb_log_model,
+            )
+
+            # RESTORED: Report final training metrics.
+            print(f"\n{model_name.upper()} metrics:")
+
+            for metric, value in metrics.items():
+                print(f"  {metric}: {value}")
+
+            print(f"Checkpoint: {output_path}")
+
+        finally:
+            # RESTORED: Close W&B run even if training fails.
+            run.finish()
+            
 if __name__ == "__main__":
     main()

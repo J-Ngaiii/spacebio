@@ -29,6 +29,7 @@ nvidia-smi
 srun python -m scripts.train_sequences \
     --data data/processed/sequence/harmonized/harmonized_training_intersection.h5ad \
     --model performer \
+    --output_dir data/results/sequence_models \
     --depth 1 \
     --epochs 100 \
     --batch-size 16 \
