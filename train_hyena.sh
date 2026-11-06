@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=performer-1L
+#SBATCH --job-name=hyena-1L
 #SBATCH --account=ic_cdss170fall
 #SBATCH --partition=savio3_gpu
 #SBATCH --nodes=1
