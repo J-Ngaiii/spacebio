@@ -58,6 +58,21 @@ def encode_metadata(obs, columns, fit_idx):
     return metadata, vocabularies
 
 
+# NEW: Masked regression counts only observed protein measurements.
+def masked_squared_error_sum(prediction, target):
+    mask = torch.isfinite(target)
+    safe_target = torch.where(mask, target, torch.zeros_like(target))
+    error_sum = (prediction - safe_target).square().masked_select(mask).sum()
+    return error_sum, int(mask.sum().item())
+
+
+def masked_mse(prediction, target):
+    error_sum, count = masked_squared_error_sum(prediction, target)
+    if count == 0:
+        raise ValueError("Batch has no observed protein targets")
+    return error_sum / count
+
+
 def train_performer(
     data: dict,
     config: PerformerConfig | None = None,
@@ -102,11 +117,12 @@ def train_performer(
         if Y.ndim == 1:
             Y = Y[:, None]
 
-        if Y.ndim != 2 or not np.isfinite(Y).all():
-            raise ValueError("Regression Y must be finite and 2D")
+        # NEW: NaNs indicate unobserved proteins; infinities are invalid.
+        if Y.ndim != 2 or np.isinf(Y).any():
+            raise ValueError("Regression Y must be 2D without infinities")
 
         output_dim = Y.shape[1]
-        criterion = nn.MSELoss()
+        criterion = masked_mse  # NEW: observed targets only
 
     else:
         if Y.ndim != 1:
@@ -172,12 +188,29 @@ def train_performer(
         x_scaler.fit(flat[train_idx])
         X = x_scaler.transform(flat).reshape(X.shape).astype(np.float32)
 
+    # NEW: Per-protein target scaling using observed TRAIN values only.
+    # Proteins with no training observations are excluded from loss/scoring
+    # by replacing their targets with NaN throughout the split.
     y_scaler = None
-
-    if cfg.task == "regression" and cfg.standardize_y:
-        y_scaler = StandardScaler()
-        y_scaler.fit(Y[train_idx])
-        Y = y_scaler.transform(Y).astype(np.float32)
+    y_mean = None
+    y_std = None
+    if cfg.task == "regression":
+        train_counts = np.isfinite(Y[train_idx]).sum(axis=0)
+        train_supported = train_counts > 0
+        if not train_supported.any():
+            raise ValueError("No observed protein targets in training split")
+        if (~train_supported).any():
+            print(f"Warning: {(~train_supported).sum()} proteins have no training labels; excluded from scoring")
+            Y[:, ~train_supported] = np.nan
+        if cfg.standardize_y:
+            y_mean = np.zeros(output_dim, dtype=np.float32)
+            y_std = np.ones(output_dim, dtype=np.float32)
+            for j in np.flatnonzero(train_supported):
+                values = Y[train_idx, j]
+                values = values[np.isfinite(values)]
+                y_mean[j] = values.mean()
+                y_std[j] = max(float(values.std()), 1e-6)
+            Y = ((Y - y_mean) / y_std).astype(np.float32)
 
     device = torch.device(
         ("cuda" if torch.cuda.is_available() else "cpu")
@@ -252,28 +285,31 @@ def train_performer(
 
     def evaluate(loader, return_predictions=False):
         model.eval()
-        total = 0.0
-        count = 0
+        total_error = 0.0
+        observed_count = 0
         predictions = []
 
         with torch.no_grad():
             for batch in loader:
                 xb, yb, mb = unpack(batch)
-
                 prediction = model(xb, mb)
-                loss = criterion(prediction, yb)
-
-                total += loss.item() * len(xb)
-                count += len(xb)
-
+                if cfg.task == "regression":
+                    # NEW: Aggregate over observed entries, not batch sizes.
+                    error_sum, n_obs = masked_squared_error_sum(prediction, yb)
+                    total_error += error_sum.item()
+                    observed_count += n_obs
+                else:
+                    loss = criterion(prediction, yb)
+                    total_error += loss.item() * len(xb)
+                    observed_count += len(xb)
                 if return_predictions:
                     predictions.append(prediction.cpu().numpy())
 
-        mean_loss = total / count
-
+        if observed_count == 0:
+            raise ValueError("Evaluation split has no observed targets")
+        mean_loss = total_error / observed_count
         if return_predictions:
             return mean_loss, np.concatenate(predictions, axis=0)
-
         return mean_loss
 
     best_loss = float("inf")
@@ -293,15 +329,29 @@ def train_performer(
             optimizer.zero_grad(set_to_none=True)
 
             prediction = model(xb, mb)
-            loss = criterion(prediction, yb)
+            if cfg.task == "regression":
+                # NEW: Skip all-missing batches to avoid undefined losses.
+                error_sum, n_obs = masked_squared_error_sum(prediction, yb)
+                if n_obs == 0:
+                    continue
+                loss = error_sum / n_obs
+            else:
+                loss = criterion(prediction, yb)
 
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
-            total += loss.item() * len(xb)
-            count += len(xb)
+            # NEW: Correct global weighting for unequal target coverage.
+            if cfg.task == "regression":
+                total += error_sum.item()
+                count += n_obs
+            else:
+                total += loss.item() * len(xb)
+                count += len(xb)
 
+        if count == 0:
+            raise ValueError("Training epoch has no observed targets")
         train_loss = total / count
         val_loss = evaluate(val_loader)
 
@@ -346,13 +396,19 @@ def train_performer(
     if cfg.task == "regression":
         actual = Y[test_idx]
 
-        if y_scaler is not None:
-            predictions = y_scaler.inverse_transform(predictions)
-            actual = y_scaler.inverse_transform(actual)
+        # NEW: Inverse transform without destroying NaN observation masks.
+        if y_mean is not None:
+            predictions = predictions * y_std + y_mean
+            actual = actual * y_std + y_mean
 
+        observed = np.isfinite(actual)
+        if not observed.any():
+            raise ValueError("Test split has no observed protein targets")
+        errors = predictions[observed] - actual[observed]
         metrics = {
-            "test_mse": float(np.mean((predictions - actual) ** 2)),
-            "test_mae": float(np.mean(np.abs(predictions - actual))),
+            "test_mse": float(np.mean(errors ** 2)),
+            "test_mae": float(np.mean(np.abs(errors))),
+            "test_observed_entries": int(observed.sum()),
             "metadata_columns": metadata_columns,
             "metadata_vocabularies": metadata_vocabularies,
             "metadata_cardinalities": metadata_cardinalities,
@@ -384,7 +440,11 @@ def train_performer(
         "protein_names": data.get("protein_names"),
         "sample_ids": data.get("sample_ids"),
         "x_scaler": x_scaler,
-        "y_scaler": y_scaler,
+        # NEW: Store train-fitted per-protein scaling parameters.
+        "y_scaler": y_scaler,  # Retained for backwards-compatible key only (None).
+        "y_mean": y_mean,
+        "y_std": y_std,
+        "train_supported_proteins": train_supported if cfg.task == "regression" else None,
         "metadata_columns": metadata_columns,
         "metadata_vocabularies": metadata_vocabularies,
         "metadata_cardinalities": metadata_cardinalities,
