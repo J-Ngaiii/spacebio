@@ -498,8 +498,13 @@ def train_performer(
     metrics["test_loss"] = test_loss
     metrics["best_epoch"] = best_epoch
 
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+
+    base_path = Path(output_path)
+    run_dir = base_path.parent / f"performer_{cfg.seed}_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    path = run_dir / base_path.name
 
     if cfg.return_predictions:
         prediction_path = path.with_suffix(".predictions.npz")
