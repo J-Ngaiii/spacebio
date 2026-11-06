@@ -3,6 +3,9 @@ import random
 from dataclasses import asdict
 from pathlib import Path
 
+import time
+from tqdm.auto import tqdm
+
 import numpy as np
 import pandas as pd
 import torch
@@ -318,53 +321,95 @@ def train_performer(
     wait = 0
     history = []
 
-    for epoch in range(cfg.epochs):
-        model.train()
-        total = 0.0
-        count = 0
+    training_start = time.perf_counter()
 
-        for batch in train_loader:
+    for epoch in range(cfg.epochs):
+        epoch_start = time.perf_counter()
+
+        model.train()
+        total_squared_error = 0.0
+        total_observed = 0
+
+        progress = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch + 1:03d}/{cfg.epochs}",
+            unit="batch",
+            dynamic_ncols=True,
+            leave=False,
+        )
+
+        for batch in progress:
             xb, yb, mb = unpack(batch)
 
             optimizer.zero_grad(set_to_none=True)
 
             prediction = model(xb, mb)
-            if cfg.task == "regression":
-                # NEW: Skip all-missing batches to avoid undefined losses.
-                error_sum, n_obs = masked_squared_error_sum(prediction, yb)
-                if n_obs == 0:
-                    continue
-                loss = error_sum / n_obs
-            else:
-                loss = criterion(prediction, yb)
+
+            # NEW: Only observed protein targets contribute to MSE.
+            mask = torch.isfinite(yb)
+            n_observed = int(mask.sum().item())
+
+            # Skip batches with no observed targets.
+            if n_observed == 0:
+                continue
+
+            safe_target = torch.where(
+                mask, yb, torch.zeros_like(yb)
+            )
+
+            squared_error = (
+                (prediction - safe_target).square()
+                .masked_select(mask)
+                .sum()
+            )
+
+            loss = squared_error / n_observed
 
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
-            # NEW: Correct global weighting for unequal target coverage.
-            if cfg.task == "regression":
-                total += error_sum.item()
-                count += n_obs
-            else:
-                total += loss.item() * len(xb)
-                count += len(xb)
+            # NEW: Accumulate loss by observed protein entries,
+            # rather than averaging batch losses equally.
+            total_squared_error += squared_error.detach().item()
+            total_observed += n_observed
 
-        if count == 0:
-            raise ValueError("Training epoch has no observed targets")
-        train_loss = total / count
+            running_loss = total_squared_error / total_observed
+
+            progress.set_postfix(
+                train_loss=f"{running_loss:.5f}"
+            )
+
+        if total_observed == 0:
+            raise RuntimeError(
+                "No observed protein targets in training epoch"
+            )
+
+        train_loss = total_squared_error / total_observed
+
+        # NEW: Run validation after every epoch.
+        # Assumes evaluate() has been updated for masked MSE.
         val_loss = evaluate(val_loader)
+
+        epoch_seconds = time.perf_counter() - epoch_start
+        elapsed_minutes = (
+            time.perf_counter() - training_start
+        ) / 60
 
         history.append({
             "epoch": epoch + 1,
             "train_loss": train_loss,
             "val_loss": val_loss,
+            "epoch_seconds": epoch_seconds,
         })
 
-        print(
-            f"Epoch {epoch + 1:03d} | "
-            f"Train {train_loss:.5f} | "
-            f"Val {val_loss:.5f}"
+        # NEW: Persistent epoch summary for Slurm logs.
+        tqdm.write(
+            f"Epoch {epoch + 1:03d}/{cfg.epochs} | "
+            f"Train MSE: {train_loss:.5f} | "
+            f"Val MSE: {val_loss:.5f} | "
+            f"Time: {epoch_seconds:.1f}s | "
+            f"Elapsed: {elapsed_minutes:.1f}min"
         )
 
         if wandb_run is not None:
@@ -372,9 +417,12 @@ def train_performer(
                 "epoch": epoch + 1,
                 "train/loss": train_loss,
                 "val/loss": val_loss,
-                "train/learning_rate": optimizer.param_groups[0]["lr"],
+                "train/learning_rate":
+                    optimizer.param_groups[0]["lr"],
+                "train/epoch_seconds": epoch_seconds,
             })
 
+        # EXISTING: Early stopping based on validation loss.
         if val_loss < best_loss:
             best_loss = val_loss
             best_state = copy.deepcopy(model.state_dict())
@@ -384,7 +432,7 @@ def train_performer(
             wait += 1
 
             if wait >= cfg.patience:
-                print("Early stopping")
+                tqdm.write("Early stopping")
                 break
 
     if best_state is None:
