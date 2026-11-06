@@ -1,100 +1,14 @@
 
-import torch
-from torch import nn
-from torch.nn import functional as F
-
-
-class HyenaOperator(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        order: int = 2,
-        kernel_size: int = 129,
-        dropout: float = 0.1,
-    ):
-        super().__init__()
-
-        if order < 1 or kernel_size < 1:
-            raise ValueError("order and kernel_size must be positive")
-
-        self.order = order
-        self.input_projection = nn.Linear(
-            dim, (order + 1) * dim
-        )
-
-        self.kernels = nn.Parameter(
-            torch.randn(order, dim, kernel_size) * 0.02
-        )
-
-        self.output_projection = nn.Linear(dim, dim)
-        self.dropout = nn.Dropout(dropout)
-
-    @staticmethod
-    def fft_conv(x, kernel):
-        length = x.shape[1]
-        fft_size = length + kernel.shape[-1] - 1
-
-        x_fft = torch.fft.rfft(
-            x.transpose(1, 2).float(), n=fft_size
-        )
-        k_fft = torch.fft.rfft(
-            kernel.float(), n=fft_size
-        )
-
-        output = torch.fft.irfft(
-            x_fft * k_fft.unsqueeze(0),
-            n=fft_size,
-        )[..., :length]
-
-        return output.transpose(1, 2).to(x.dtype)
-
-    def forward(self, x):
-        parts = self.input_projection(x).chunk(
-            self.order + 1, dim=-1
-        )
-
-        state = parts[-1]
-
-        for gate, kernel in zip(
-            reversed(parts[:-1]), self.kernels
-        ):
-            state = self.fft_conv(state, kernel)
-            state = state * torch.sigmoid(gate)
-
-        return self.dropout(
-            self.output_projection(state)
-        )
-
-
-class HyenaBlock(nn.Module):
-    def __init__(self, dim, order, kernel_size, dropout):
-        super().__init__()
-
-        self.norm1 = nn.LayerNorm(dim)
-        self.mixer = HyenaOperator(
-            dim, order, kernel_size, dropout
-        )
-        self.norm2 = nn.LayerNorm(dim)
-
-        self.ffn = nn.Sequential(
-            nn.Linear(dim, dim * 4),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(dim * 4, dim),
-            nn.Dropout(dropout),
-        )
-
-    def forward(self, x):
-        x = x + self.mixer(self.norm1(x))
-        return x + self.ffn(self.norm2(x))
+from src.models.gene_embedding import GeneExpressionEmbedding
 
 
 class Hyena(nn.Module):
     """
-    Generic supervised Hyena-style model.
+    Gene expression Hyena model with categorical metadata.
 
     Input:
-        (batch, features) or (batch, sequence, channels)
+        x: (batch, num_genes)
+        metadata: dict[str, Tensor(batch,)]
 
     Output:
         (batch, output_dim)
@@ -110,18 +24,27 @@ class Hyena(nn.Module):
         kernel_size: int = 129,
         dropout: float = 0.1,
         input_channels: int = 1,
+        metadata_cardinalities: dict[str, int] | None = None,
     ):
         super().__init__()
+
+        if input_channels != 1:
+            raise ValueError(
+                "GeneExpressionEmbedding requires one expression "
+                "value per gene"
+            )
 
         self.input_dim = input_dim
         self.input_channels = input_channels
 
-        self.embedding = nn.Linear(input_channels, d_model)
-
-        self.position = nn.Parameter(
-            torch.randn(1, input_dim, d_model) * 0.02
+        # Gene identity + expression + metadata embeddings
+        self.embedding = GeneExpressionEmbedding(
+            num_genes=input_dim,
+            d_model=d_model,
+            metadata_cardinalities=metadata_cardinalities or {},
         )
 
+        # Hyena backbone
         self.blocks = nn.Sequential(*[
             HyenaBlock(
                 d_model, order, kernel_size, dropout
@@ -129,24 +52,34 @@ class Hyena(nn.Module):
             for _ in range(depth)
         ])
 
+        # Protein abundance prediction head
         self.norm = nn.LayerNorm(d_model)
         self.head = nn.Linear(d_model, output_dim)
 
-    def forward(self, x):
-        if x.ndim == 2:
-            x = x.unsqueeze(-1)
+    def forward(self, x, metadata=None):
+        # Accept (B, M) or (B, M, 1)
+        if x.ndim == 3:
+            if x.shape[-1] != 1:
+                raise ValueError("Expected one channel per gene")
+            x = x.squeeze(-1)
 
-        if x.ndim != 3:
-            raise ValueError("Expected 2D or 3D input")
+        if x.ndim != 2:
+            raise ValueError("Expected 2D gene expression input")
 
         if x.shape[1] != self.input_dim:
-            raise ValueError("Unexpected sequence length")
+            raise ValueError("Gene count mismatch")
 
-        if x.shape[2] != self.input_channels:
-            raise ValueError("Unexpected input channels")
+        if metadata is None:
+            metadata = {}
 
-        x = self.embedding(x) + self.position
+        # (B, M) -> (B, M, d_model)
+        x = self.embedding(x, metadata)
+
+        # (B, M, d_model) -> (B, M, d_model)
         x = self.blocks(x)
+
+        # (B, M, d_model) -> (B, d_model)
         x = self.norm(x).mean(dim=1)
 
+        # (B, d_model) -> (B, output_dim)
         return self.head(x)

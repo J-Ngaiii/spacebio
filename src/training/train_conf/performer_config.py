@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 @dataclass
 class PerformerConfig:
     task: str = "regression"
+    return_predictions: bool = False
 
     input_dim: int | None = None
     output_dim: int | None = None

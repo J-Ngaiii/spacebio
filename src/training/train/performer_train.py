@@ -413,7 +413,7 @@ def train_performer(
 
         # NEW: Run validation after every epoch.
         # Assumes evaluate() has been updated for masked MSE.
-        val_loss = evaluate(val_loader)
+        val_loss = evaluate(val_loader, return_predictions=False)
 
         epoch_seconds = time.perf_counter() - epoch_start
         elapsed_minutes = (
@@ -465,9 +465,9 @@ def train_performer(
     model.load_state_dict(best_state)
     test_loss, predictions = evaluate(test_loader, return_predictions=True)
 
-    if cfg.task == "regression":
-        actual = Y[test_idx]
+    actual = Y[test_idx]
 
+    if cfg.task == "regression":
         # NEW: Inverse transform without destroying NaN observation masks.
         if y_mean is not None:
             predictions = predictions * y_std + y_mean
@@ -500,6 +500,20 @@ def train_performer(
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    if cfg.return_predictions:
+        prediction_path = path.with_suffix(".predictions.npz")
+
+        np.savez_compressed(
+            prediction_path,
+            predictions=predictions,
+            actual=actual,
+            test_indices=test_idx,
+            sample_ids=np.asarray(data["sample_ids"])[test_idx],
+            protein_names=np.asarray(data["protein_names"]),
+        )
+
+        print(f"Saved predictions: {prediction_path}")
 
     torch.save({
         "model_state_dict": best_state,

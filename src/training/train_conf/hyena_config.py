@@ -5,6 +5,7 @@ from dataclasses import dataclass
 @dataclass
 class HyenaConfig:
     task: str = "regression"
+    return_predictions: bool = False
 
     input_dim: int | None = None
     output_dim: int | None = None

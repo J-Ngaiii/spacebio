@@ -92,6 +92,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train Performer and Hyena models on AnnData")
     parser.add_argument("--data", type=Path, default=Path("data/processed/sequence/harmonized/harmonized_training_intersection.h5ad"))
     parser.add_argument("--model", choices=("performer", "hyena", "both"), default="performer")
+    parser.add_argument("--return-predictions", action="store_true")
     parser.add_argument("--depth", type=int, default=1)
     parser.add_argument("--target-key", default="protein")
     parser.add_argument("--epochs", type=int, default=100)
@@ -116,6 +117,8 @@ def main():
         print(f"\n{'=' * 60}\nTraining {model_name.upper()}\n{'=' * 60}")
         common = {
             "task": "regression",
+            "return_predictions": args.return_predictions,
+            "depth": args.depth,
             "input_dim": input_dim,
             "output_dim": output_dim,
             "epochs": args.epochs,
@@ -125,7 +128,7 @@ def main():
         }
         
         if model_name == "performer":
-            config = PerformerConfig(**common, depth=args.depth)
+            config = PerformerConfig(**common)
             trainer = train_performer
         else:
             # RESTORED: Select Hyena trainer when requested.
@@ -179,6 +182,6 @@ def main():
         finally:
             # RESTORED: Close W&B run even if training fails.
             run.finish()
-            
+
 if __name__ == "__main__":
     main()

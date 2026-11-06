@@ -1,17 +1,48 @@
-
 import random
+import time
 from dataclasses import asdict
 from pathlib import Path
-import wandb
+
 import numpy as np
+import pandas as pd
 import torch
+import wandb
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+from tqdm.auto import tqdm
 
 from src.models.hyena import Hyena
 from src.training.train_conf.hyena_config import HyenaConfig
+
+
+def encode_metadata(obs, columns, fit_idx):
+    """Encode categories using the training split only; 0 means missing/unseen."""
+    metadata = {}
+    vocabularies = {}
+    for column in columns:
+        if column in obs.columns:
+            values = obs[column].astype("string").fillna("<MISSING>")
+        else:
+            values = pd.Series(
+                ["<MISSING>"] * len(obs), index=obs.index, dtype="string"
+            )
+        categories = sorted(
+            value for value in values.iloc[fit_idx].unique()
+            if value != "<MISSING>"
+        )
+        vocabulary = {value: i + 1 for i, value in enumerate(categories)}
+        metadata[column] = values.map(vocabulary).fillna(0).to_numpy(dtype=np.int64)
+        vocabularies[column] = vocabulary
+    return metadata, vocabularies
+
+
+def masked_squared_error_sum(prediction, target):
+    mask = torch.isfinite(target)
+    safe_target = torch.where(mask, target, torch.zeros_like(target))
+    error_sum = (prediction - safe_target).square().masked_select(mask).sum()
+    return error_sum, int(mask.sum().item())
 
 
 def train_hyena(
@@ -26,7 +57,6 @@ def train_hyena(
     random.seed(cfg.seed)
     np.random.seed(cfg.seed)
     torch.manual_seed(cfg.seed)
-
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(cfg.seed)
 
@@ -34,92 +64,101 @@ def train_hyena(
         raise ValueError(f"Unsupported task: {cfg.task}")
 
     X = np.asarray(data["X"], dtype=np.float32)
-    Y = np.asarray(data["Y"])
+    Y = np.asarray(data["Y"]).copy()
 
-    if X.ndim not in (2, 3):
-        raise ValueError("X must be 2D or 3D")
+    if X.ndim == 3 and X.shape[-1] == 1:
+        X = X.squeeze(-1)
+    if X.ndim != 2:
+        raise ValueError("GeneExpressionEmbedding requires X shaped (samples, genes)")
     if len(X) != len(Y):
         raise ValueError("X and Y sample counts differ")
     if not np.isfinite(X).all():
         raise ValueError("Nonfinite X")
 
     classes = None
-
     if cfg.task == "regression":
         Y = np.asarray(Y, dtype=np.float32)
-
         if Y.ndim == 1:
             Y = Y[:, None]
-
-        if Y.ndim != 2 or not np.isfinite(Y).all():
-            raise ValueError("Regression Y must be finite and 2D")
-
+        if Y.ndim != 2 or np.isinf(Y).any():
+            raise ValueError("Regression Y must be 2D without infinities")
         output_dim = Y.shape[1]
-        criterion = nn.MSELoss()
-
+        criterion = None
     else:
         if Y.ndim != 1:
             raise ValueError("Classification requires 1D labels")
-
         classes, Y = np.unique(Y, return_inverse=True)
         Y = Y.astype(np.int64)
         output_dim = len(classes)
-
         if output_dim < 2:
             raise ValueError("At least two classes required")
-
         criterion = nn.CrossEntropyLoss()
 
     length = X.shape[1]
-    channels = 1 if X.ndim == 2 else X.shape[2]
-
+    channels = 1
     if cfg.input_dim is not None and cfg.input_dim != length:
         raise ValueError("Configured input_dim mismatch")
     if cfg.output_dim is not None and cfg.output_dim != output_dim:
         raise ValueError("Configured output_dim mismatch")
     if cfg.input_channels != channels:
         raise ValueError("Configured input_channels mismatch")
-
-    if (
-        not 0 < cfg.val_fraction < 1
-        or not 0 < cfg.test_fraction < 1
-        or cfg.val_fraction + cfg.test_fraction >= 1
-    ):
+    if not (0 < cfg.val_fraction < 1 and 0 < cfg.test_fraction < 1
+            and cfg.val_fraction + cfg.test_fraction < 1):
         raise ValueError("Invalid split fractions")
 
     indices = np.arange(len(X))
-
     train_val, test_idx = train_test_split(
-        indices,
-        test_size=cfg.test_fraction,
-        random_state=cfg.seed,
+        indices, test_size=cfg.test_fraction, random_state=cfg.seed
     )
-
     train_idx, val_idx = train_test_split(
         train_val,
         test_size=cfg.val_fraction / (1 - cfg.test_fraction),
         random_state=cfg.seed,
     )
 
-    x_scaler = None
+    metadata_columns = ["source", "lineage", "tissue", "cancer_type"]
+    metadata, metadata_vocabularies = encode_metadata(
+        data["obs"], metadata_columns, train_idx
+    )
+    metadata_cardinalities = {
+        name: len(vocab) + 1
+        for name, vocab in metadata_vocabularies.items()
+    }
 
+    x_scaler = None
     if cfg.standardize_x:
         x_scaler = StandardScaler()
-        flat = X.reshape(len(X), -1)
-        x_scaler.fit(flat[train_idx])
-        X = x_scaler.transform(flat).reshape(X.shape).astype(np.float32)
+        x_scaler.fit(X[train_idx])
+        X = x_scaler.transform(X).astype(np.float32)
 
-    y_scaler = None
+    y_mean = None
+    y_std = None
+    train_supported = None
+    if cfg.task == "regression":
+        train_counts = np.isfinite(Y[train_idx]).sum(axis=0)
+        train_supported = train_counts > 0
+        if not train_supported.any():
+            raise ValueError("No observed protein targets in training split")
+        if (~train_supported).any():
+            print(
+                f"Warning: {(~train_supported).sum()} proteins have no "
+                "training labels; excluded from scoring"
+            )
+            Y[:, ~train_supported] = np.nan
 
-    if cfg.task == "regression" and cfg.standardize_y:
-        y_scaler = StandardScaler()
-        y_scaler.fit(Y[train_idx])
-        Y = y_scaler.transform(Y).astype(np.float32)
+        if cfg.standardize_y:
+            y_mean = np.zeros(output_dim, dtype=np.float32)
+            y_std = np.ones(output_dim, dtype=np.float32)
+            for j in np.flatnonzero(train_supported):
+                values = Y[train_idx, j]
+                values = values[np.isfinite(values)]
+                y_mean[j] = values.mean()
+                y_std[j] = max(float(values.std()), 1.0)
+            Y = ((Y - y_mean) / y_std).astype(np.float32)
 
     device = torch.device(
         ("cuda" if torch.cuda.is_available() else "cpu")
-        if cfg.device == "auto"
-        else cfg.device
+        if cfg.device == "auto" else cfg.device
     )
 
     model = Hyena(
@@ -131,12 +170,11 @@ def train_hyena(
         order=cfg.order,
         kernel_size=cfg.kernel_size,
         dropout=cfg.dropout,
+        metadata_cardinalities=metadata_cardinalities,
     ).to(device)
 
     optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=cfg.learning_rate,
-        weight_decay=cfg.weight_decay,
+        model.parameters(), lr=cfg.learning_rate, weight_decay=cfg.weight_decay
     )
 
     if wandb_run is not None:
@@ -146,85 +184,118 @@ def train_hyena(
         )
 
     def make_loader(idx, shuffle=False):
-        y_dtype = (
-            torch.long
-            if cfg.task == "classification"
-            else torch.float32
-        )
-
-        dataset = TensorDataset(
+        y_dtype = torch.long if cfg.task == "classification" else torch.float32
+        tensors = [
             torch.tensor(X[idx], dtype=torch.float32),
             torch.tensor(Y[idx], dtype=y_dtype),
-        )
-
+        ]
+        for name in metadata_columns:
+            tensors.append(torch.tensor(metadata[name][idx], dtype=torch.long))
         return DataLoader(
-            dataset,
-            batch_size=cfg.batch_size,
-            shuffle=shuffle,
+            TensorDataset(*tensors), batch_size=cfg.batch_size, shuffle=shuffle
         )
 
-    train_loader = make_loader(train_idx, True)
+    train_loader = make_loader(train_idx, shuffle=True)
     val_loader = make_loader(val_idx)
     test_loader = make_loader(test_idx)
 
-    def evaluate(loader):
+    def unpack(batch):
+        xb, yb, *metadata_batch = batch
+        mb = {
+            name: tensor.to(device)
+            for name, tensor in zip(metadata_columns, metadata_batch)
+        }
+        return xb.to(device), yb.to(device), mb
+
+    def evaluate(loader, return_predictions=False):
         model.eval()
-        total = 0.0
-        count = 0
-
+        total_error = 0.0
+        observed_count = 0
+        predictions = []
         with torch.no_grad():
-            for xb, yb in loader:
-                xb = xb.to(device)
-                yb = yb.to(device)
+            for batch in loader:
+                xb, yb, mb = unpack(batch)
+                prediction = model(xb, mb)
+                if cfg.task == "regression":
+                    error_sum, n_obs = masked_squared_error_sum(prediction, yb)
+                    total_error += error_sum.item()
+                    observed_count += n_obs
+                else:
+                    loss = criterion(prediction, yb)
+                    total_error += loss.item() * len(xb)
+                    observed_count += len(xb)
+                if return_predictions:
+                    predictions.append(prediction.cpu().numpy())
 
-                prediction = model(xb)
-                loss = criterion(prediction, yb)
-
-                total += loss.item() * len(xb)
-                count += len(xb)
-
-        return total / count
+        if observed_count == 0:
+            raise ValueError("Evaluation split has no observed targets")
+        mean_loss = total_error / observed_count
+        if return_predictions:
+            return mean_loss, np.concatenate(predictions, axis=0)
+        return mean_loss
 
     best_loss = float("inf")
     best_state = None
     best_epoch = 0
     wait = 0
     history = []
+    training_start = time.perf_counter()
 
     for epoch in range(cfg.epochs):
+        epoch_start = time.perf_counter()
         model.train()
-        total = 0.0
-        count = 0
+        total_error = 0.0
+        observed_count = 0
 
-        for xb, yb in train_loader:
-            xb = xb.to(device)
-            yb = yb.to(device)
-
+        progress = tqdm(
+            train_loader,
+            desc=f"Epoch {epoch + 1:03d}/{cfg.epochs}",
+            unit="batch",
+            dynamic_ncols=True,
+            leave=False,
+        )
+        for batch in progress:
+            xb, yb, mb = unpack(batch)
             optimizer.zero_grad(set_to_none=True)
+            prediction = model(xb, mb)
 
-            prediction = model(xb)
-            loss = criterion(prediction, yb)
+            if cfg.task == "regression":
+                error_sum, n_obs = masked_squared_error_sum(prediction, yb)
+                if n_obs == 0:
+                    continue
+                loss = error_sum / n_obs
+                total_error += error_sum.detach().item()
+                observed_count += n_obs
+            else:
+                loss = criterion(prediction, yb)
+                total_error += loss.detach().item() * len(xb)
+                observed_count += len(xb)
 
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
+            progress.set_postfix(
+                train_loss=f"{total_error / observed_count:.5f}"
+            )
 
-            total += loss.item() * len(xb)
-            count += len(xb)
-
-        train_loss = total / count
+        if observed_count == 0:
+            raise RuntimeError("No observed targets in training epoch")
+        train_loss = total_error / observed_count
         val_loss = evaluate(val_loader)
+        epoch_seconds = time.perf_counter() - epoch_start
+        elapsed_minutes = (time.perf_counter() - training_start) / 60
 
         history.append({
             "epoch": epoch + 1,
             "train_loss": train_loss,
             "val_loss": val_loss,
+            "epoch_seconds": epoch_seconds,
         })
-
-        print(
-            f"Epoch {epoch + 1:03d} | "
-            f"Train {train_loss:.5f} | "
-            f"Val {val_loss:.5f}"
+        tqdm.write(
+            f"Epoch {epoch + 1:03d}/{cfg.epochs} | "
+            f"Train {'MSE' if cfg.task == 'regression' else 'loss'}: {train_loss:.5f} | "
+            f"Val {'MSE' if cfg.task == 'regression' else 'loss'}: {val_loss:.5f} | "
+            f"Time: {epoch_seconds:.1f}s | Elapsed: {elapsed_minutes:.1f}min"
         )
 
         if wandb_run is not None:
@@ -233,6 +304,7 @@ def train_hyena(
                 "train/loss": train_loss,
                 "val/loss": val_loss,
                 "train/learning_rate": optimizer.param_groups[0]["lr"],
+                "train/epoch_seconds": epoch_seconds,
             })
 
         if val_loss < best_loss:
@@ -245,46 +317,37 @@ def train_hyena(
             wait = 0
         else:
             wait += 1
-
             if wait >= cfg.patience:
-                print("Early stopping")
+                tqdm.write("Early stopping")
                 break
 
     if best_state is None:
         raise RuntimeError("No successful training epoch")
 
     model.load_state_dict(best_state)
-    test_loss = evaluate(test_loader)
-
-    model.eval()
-    predictions = []
-
-    with torch.no_grad():
-        for xb, _ in test_loader:
-            predictions.append(
-                model(xb.to(device)).cpu().numpy()
-            )
-
-    predictions = np.concatenate(predictions, axis=0)
+    test_loss, predictions = evaluate(test_loader, return_predictions=True)
+    actual = Y[test_idx]
 
     if cfg.task == "regression":
-        actual = Y[test_idx]
-
-        if y_scaler is not None:
-            predictions = y_scaler.inverse_transform(predictions)
-            actual = y_scaler.inverse_transform(actual)
-
+        if y_mean is not None:
+            predictions = predictions * y_std + y_mean
+            actual = actual * y_std + y_mean
+        observed = np.isfinite(actual)
+        if not observed.any():
+            raise ValueError("Test split has no observed protein targets")
+        errors = predictions[observed] - actual[observed]
         metrics = {
-            "test_mse": float(np.mean((predictions - actual) ** 2)),
-            "test_mae": float(np.mean(np.abs(predictions - actual))),
+            "test_mse": float(np.mean(errors ** 2)),
+            "test_mae": float(np.mean(np.abs(errors))),
+            "test_observed_entries": int(observed.sum()),
+            "metadata_columns": metadata_columns,
+            "metadata_vocabularies": metadata_vocabularies,
+            "metadata_cardinalities": metadata_cardinalities,
         }
-
     else:
         metrics = {
             "test_accuracy": float(
-                np.mean(
-                    predictions.argmax(axis=1) == Y[test_idx]
-                )
+                np.mean(predictions.argmax(axis=1) == actual)
             )
         }
 
@@ -293,6 +356,20 @@ def train_hyena(
 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    if cfg.return_predictions:
+        prediction_path = path.with_suffix(".predictions.npz")
+        save_data = {
+            "predictions": predictions,
+            "actual": actual,
+            "test_indices": test_idx,
+        }
+        if data.get("sample_ids") is not None:
+            save_data["sample_ids"] = np.asarray(data["sample_ids"])[test_idx]
+        if cfg.task == "regression" and data.get("protein_names") is not None:
+            save_data["protein_names"] = np.asarray(data["protein_names"])
+        np.savez_compressed(prediction_path, **save_data)
+        print(f"Saved predictions: {prediction_path}")
 
     torch.save({
         "model_state_dict": best_state,
@@ -305,7 +382,13 @@ def train_hyena(
         "protein_names": data.get("protein_names"),
         "sample_ids": data.get("sample_ids"),
         "x_scaler": x_scaler,
-        "y_scaler": y_scaler,
+        "y_scaler": None,
+        "y_mean": y_mean,
+        "y_std": y_std,
+        "train_supported_proteins": train_supported,
+        "metadata_columns": metadata_columns,
+        "metadata_vocabularies": metadata_vocabularies,
+        "metadata_cardinalities": metadata_cardinalities,
         "split_indices": {
             "train": train_idx,
             "val": val_idx,
@@ -326,7 +409,6 @@ def train_hyena(
                 if key.startswith("test_")
             },
         })
-
         wandb_run.summary["best_val_loss"] = best_loss
         wandb_run.summary["best_epoch"] = best_epoch
         wandb_run.summary["checkpoint_path"] = str(path)
@@ -341,7 +423,6 @@ def train_hyena(
                     "output_dim": output_dim,
                 },
             )
-
             artifact.add_file(str(path))
             wandb_run.log_artifact(artifact)
 

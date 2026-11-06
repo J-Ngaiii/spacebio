@@ -30,6 +30,7 @@ srun python -m scripts.train_sequences \
     --data data/processed/sequence/harmonized/harmonized_training_intersection.h5ad \
     --model performer \
     --output-dir data/results/sequence_models \
+    --return-predictions \
     --depth 1 \
     --epochs 100 \
     --batch-size 16 \
