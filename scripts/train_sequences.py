@@ -126,3 +126,6 @@ def main():
         if model_name == "performer":
             config = PerformerConfig(**common, depth=args.depth)
             trainer = train_performer
+
+if __name__ == "__main__":
+    main()
