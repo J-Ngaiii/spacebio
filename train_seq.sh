@@ -4,9 +4,9 @@
 #SBATCH --partition=savio3_gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8          # verify the CPU:GPU ratio for A40 in the Savio docs
+#SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:A40:1
-#SBATCH --time=03:00:00            # one model, one layer; adjust after a short test run
+#SBATCH --time=08:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
@@ -37,4 +37,4 @@ srun python -m scripts.train_sequences \
     --lr 3e-4 \
     --wandb-project spacebio-sequence-models \
     --wandb-group harmonized-training \
-    --wandb-mode online          # switch to offline if compute nodes lack internet
+    --wandb-mode online
