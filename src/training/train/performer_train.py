@@ -245,17 +245,6 @@ def train_performer(
         else cfg.device
     )
 
-    # debug
-    print(f"Training device: {device}", flush=True)
-    print(
-        f"CUDA available: {torch.cuda.is_available()}",
-        flush=True,
-    )
-    print(
-        f"Model device: {next(model.parameters()).device}",
-        flush=True,
-    )
-
     model = Performer(
         input_dim=length,
         output_dim=output_dim,
@@ -266,6 +255,17 @@ def train_performer(
         dropout=cfg.dropout,
         metadata_cardinalities=metadata_cardinalities,
     ).to(device)
+
+    # debug
+    print(f"Training device: {device}", flush=True)
+    print(
+        f"CUDA available: {torch.cuda.is_available()}",
+        flush=True,
+    )
+    print(
+        f"Model device: {next(model.parameters()).device}",
+        flush=True,
+    )
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -516,7 +516,7 @@ def train_performer(
     run_dir.mkdir(parents=True, exist_ok=True)
 
     path = run_dir / "performer.pt"
-    
+
     if cfg.return_predictions:
         prediction_path = path.with_suffix(".predictions.npz")
 
