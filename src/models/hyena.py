@@ -1,3 +1,5 @@
+import torch
+from torch import nn
 
 from src.models.gene_embedding import GeneExpressionEmbedding
 
