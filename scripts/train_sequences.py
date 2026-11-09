@@ -1,6 +1,7 @@
 import argparse
 from dataclasses import asdict
 from pathlib import Path
+import torch
 
 import anndata as ad
 import numpy as np
@@ -107,6 +108,13 @@ def main():
     parser.add_argument("--wandb-log-model", action="store_true")
     args = parser.parse_args()
 
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA is unavailable. Refusing to train on CPU."
+        )
+
+    print(f"CUDA device: {torch.cuda.get_device_name(0)}", flush=True)
+
     data = load_data(args.data, args.target_key)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     input_dim = data["X"].shape[1]
@@ -130,13 +138,15 @@ def main():
         if model_name == "performer":
             config = PerformerConfig(**common)
             trainer = train_performer
-        else:
+        elif model_name == "hyena":
             # RESTORED: Select Hyena trainer when requested.
             config = HyenaConfig(**common)
             trainer = train_hyena
 
+        # debug: 
+        print(config)
         # RESTORED: Define model checkpoint destination.
-        output_path = args.output_dir / f"{model_name}.pt"
+        output_path = args.output_dir
 
         # RESTORED: Initialize W&B run before training.
         print(f"Initializing W&B for {model_name}...", flush=True)
