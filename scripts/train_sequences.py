@@ -2,6 +2,8 @@ import argparse
 from dataclasses import asdict
 from pathlib import Path
 import torch
+import json
+
 
 import anndata as ad
 import numpy as np
@@ -187,8 +189,24 @@ def main():
             for metric, value in metrics.items():
                 print(f"  {metric}: {value}")
 
-            print(f"Checkpoint: {metrics['checkpoint_path']}") # somewhat redundant but its fine, more visible
+            checkpoint_path = Path(metrics["checkpoint_path"])
+            print(f"Checkpoint: {checkpoint_path}") # somewhat redundant but its fine, more visible
 
+            config_path = checkpoint_path.parent / "config.json"
+            with config_path.open("w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        **asdict(config),
+                        "architecture": model_name,
+                        "dataset": str(args.data),
+                        "target_key": args.target_key,
+                        "n_samples": data["X"].shape[0],
+                        "n_features": input_dim,
+                        "n_targets": output_dim,
+                    },
+                    f,
+                    indent=4,
+                )
         finally:
             # RESTORED: Close W&B run even if training fails.
             run.finish()

@@ -31,7 +31,7 @@ srun python -m scripts.train_sequences \
     --model hyena \
     --output-dir data/results/sequence_models \
     --return-predictions \
-    --depth 1 \
+    --depth 3 \
     --epochs 100 \
     --batch-size 16 \
     --lr 3e-4 \
