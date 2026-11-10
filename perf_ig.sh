@@ -1,13 +1,14 @@
 #!/bin/bash
-#SBATCH --job-name=ig_performer
+#SBATCH --job-name=performer-1L
 #SBATCH --account=ic_cdss170fall
 #SBATCH --partition=savio3_gpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:A40:1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=32G
-#SBATCH --time=01:00:00
-#SBATCH --output=slurm/logs/performer_ig_%j.out
-#SBATCH --error=slurm/logs/performer_ig_%j.err
+#SBATCH --time=08:00:00
+#SBATCH --output=logs/%x_%j.out
+#SBATCH --error=logs/%x_%j.err
 
 set -euo pipefail
 
