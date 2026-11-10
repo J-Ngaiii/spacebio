@@ -187,7 +187,7 @@ def main():
             for metric, value in metrics.items():
                 print(f"  {metric}: {value}")
 
-            print(f"Checkpoint: {output_path}")
+            print(f"Checkpoint: {metrics['checkpoint_path']}") # somewhat redundant but its fine, more visible
 
         finally:
             # RESTORED: Close W&B run even if training fails.

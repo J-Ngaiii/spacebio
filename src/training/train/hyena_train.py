@@ -356,11 +356,12 @@ def train_hyena(
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
 
-    base_path = Path(output_path)
-    run_dir = base_path.parent / f"hyena_{cfg.seed}_{timestamp}"
+    run_dir = Path(output_path) / f"hyena_{cfg.seed}_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     path = run_dir / "hyena.pt"
+
+    metrics["checkpoint_path"] = str(path)
     
     if cfg.return_predictions:
         prediction_path = path.with_suffix(".predictions.npz")
