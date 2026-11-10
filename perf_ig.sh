@@ -24,8 +24,8 @@ python -m scripts.attributions \
     --data data/processed/sequence/harmonized/harmonized_training_intersection.h5ad \
     --protein TP53 \
     --output-dir data/results/interpretability/performer_depth3 \
-    --num-samples 8 \
-    --batch-size 2 \
+    --num-samples 128 \
+    --batch-size 4 \
     --internal-batch-size 8 \
-    --n-steps 16 \
+    --n-steps 64 \
     --device cuda
