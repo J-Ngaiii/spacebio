@@ -1,4 +1,3 @@
-
 #!/bin/bash
 #SBATCH --job-name=performer_ig
 #SBATCH --account=ic_cdss170fall
