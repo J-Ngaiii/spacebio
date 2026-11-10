@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=performer_ig
+#SBATCH --job-name=ig_performer
 #SBATCH --account=ic_cdss170fall
 #SBATCH --partition=savio3_gpu
 #SBATCH --gres=gpu:A40:1
