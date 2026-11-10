@@ -10,8 +10,6 @@
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
-set -euo pipefail
-
 # Activate environment
 source /global/home/users/jonathanngai/miniconda3/etc/profile.d/conda.sh
 conda activate spacebio
@@ -21,7 +19,6 @@ echo "Node: $(hostname)"
 echo "GPU:"
 nvidia-smi
 
-# Run Integrated Gradients
 python -m scripts.attributions \
     --checkpoint data/results/sequence_models/performer_42_20261109-203917/performer.pt \
     --data data/processed/sequence/harmonized/harmonized_training_intersection.h5ad \
