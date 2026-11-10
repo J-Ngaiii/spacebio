@@ -23,14 +23,12 @@ nvidia-smi
 
 # Run Integrated Gradients
 python -m scripts.attributions \
-    --checkpoint data/results/performer_42_20261109-115613/performer.pt \
+    --checkpoint data/results/sequence_models/performer_42_20261109-203917/performer.pt \
     --data data/processed/sequence/harmonized/harmonized_training_intersection.h5ad \
     --protein TP53 \
-    --output-dir data/results/interpretability/performer \
+    --output-dir data/results/interpretability/performer_depth3 \
     --num-samples 8 \
     --batch-size 2 \
     --internal-batch-size 8 \
     --n-steps 16 \
     --device cuda
-
-echo "Integrated Gradients completed."

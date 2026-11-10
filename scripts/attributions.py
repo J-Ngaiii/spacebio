@@ -10,34 +10,50 @@ from captum.attr import IntegratedGradients
 from scipy import sparse
 
 from src.models.performer import Performer
+from src.models.hyena import Hyena
 
 
-def load_checkpoint(path, device):
-    """Restore the trained Performer and its preprocessing metadata."""
-    checkpoint = torch.load(
-        path,
-        map_location="cpu",
-        weights_only=False,
-    )
-
+def load_checkpoint(path, device, architecture="auto"):
+    """Restore a Performer or Hyena using its saved configuration."""
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
     cfg = checkpoint["config"]
 
-    model = Performer(
+    if architecture == "auto":
+        architecture = cfg.get("architecture") or cfg.get("model")
+        if architecture is None:
+            folder = path.parent.name.lower()
+            architecture = next(
+                (name for name in ("performer", "hyena") if folder.startswith(name)),
+                None,
+            )
+        if architecture is None:
+            raise ValueError(
+                "Cannot infer architecture. Supply --model performer or --model hyena."
+            )
+
+    shared = dict(
         input_dim=checkpoint["input_dim"],
         output_dim=checkpoint["output_dim"],
         input_channels=checkpoint["input_channels"],
         d_model=cfg["d_model"],
         depth=cfg["depth"],
-        heads=cfg["heads"],
         dropout=cfg["dropout"],
-        metadata_cardinalities=checkpoint["metadata_cardinalities"],
+        metadata_cardinalities=checkpoint.get("metadata_cardinalities") or {},
     )
+    if architecture == "performer":
+        model = Performer(**shared, heads=cfg["heads"])
+    elif architecture == "hyena":
+        model = Hyena(
+            **shared,
+            order=cfg["order"],
+            kernel_size=cfg["kernel_size"],
+        )
+    else:
+        raise ValueError(f"Unsupported model: {architecture}")
 
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.to(device)
-    model.eval()
-
-    return model, checkpoint
+    model.load_state_dict(checkpoint["model_state_dict"], strict=True)
+    model.to(device).eval()
+    return model, checkpoint, architecture
 
 
 def prepare_data(adata, checkpoint, indices):
@@ -182,9 +198,10 @@ def compute_attributions(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Compute Integrated Gradients for Performer protein predictions"
+        description="Compute Integrated Gradients for Performer or Hyena protein predictions"
     )
 
+    parser.add_argument("--model", choices=("auto", "performer", "hyena"), default="auto")
     parser.add_argument(
         "--checkpoint",
         type=Path,
@@ -266,9 +283,8 @@ def main():
     # 1. Restore trained model
     # --------------------------------------------------
 
-    model, checkpoint = load_checkpoint(
-        args.checkpoint,
-        device,
+    model, checkpoint, architecture = load_checkpoint(
+        args.checkpoint, device, args.model
     )
 
     # --------------------------------------------------
@@ -389,6 +405,8 @@ def main():
         selected_indices,
     )
 
+    print(f"Model: {architecture}")
+    print(f"Depth: {checkpoint['config']['depth']}")
     print(f"Protein: {args.protein}")
     print(f"Protein index: {protein_idx}")
     print(f"Samples: {len(X)}")
@@ -459,6 +477,8 @@ def main():
         )[selected_indices],
         sample_indices=selected_indices,
         protein_name=args.protein,
+        architecture=architecture,
+        checkpoint_path=str(args.checkpoint),
         protein_idx=protein_idx,
         baseline="zero_standardized_expression",
     )
