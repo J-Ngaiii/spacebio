@@ -153,7 +153,7 @@ def train_hyena(
                 values = Y[train_idx, j]
                 values = values[np.isfinite(values)]
                 y_mean[j] = values.mean()
-                y_std[j] = max(float(values.std()), 1.0)
+                y_std[j] = max(float(values.std()), cfg.sd_floor)
             Y = ((Y - y_mean) / y_std).astype(np.float32)
 
     device = torch.device(

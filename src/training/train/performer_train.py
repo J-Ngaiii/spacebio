@@ -212,7 +212,7 @@ def train_performer(
                 values = Y[train_idx, j]
                 values = values[np.isfinite(values)]
                 y_mean[j] = values.mean()
-                y_std[j] = max(float(values.std()), 1) # some proteins have sds < 1e6 leading to MSE blow up when we divide by SD
+                y_std[j] = max(float(values.std()), cfg.sd_floor) # some proteins have sds < 1e6 leading to MSE blow up when we divide by SD
 
                         
             # # DEBUG: Examine target standard deviations.

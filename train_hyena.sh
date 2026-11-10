@@ -34,6 +34,7 @@ srun python -m scripts.train_sequences \
     --depth 3 \
     --epochs 100 \
     --batch-size 16 \
+    --sd-floor 0.01 \
     --lr 3e-4 \
     --wandb-project spacebio-sequence-models \
     --wandb-group harmonized-training \

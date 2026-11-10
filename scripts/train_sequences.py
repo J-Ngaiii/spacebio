@@ -97,6 +97,7 @@ def main():
     parser.add_argument("--model", choices=("performer", "hyena", "both"), default="performer")
     parser.add_argument("--return-predictions", action="store_true")
     parser.add_argument("--depth", type=int, default=1)
+    parser.add_argument("--sd-floor", type=float, default=0.01)
     parser.add_argument("--target-key", default="protein")
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--batch-size", type=int, default=32)
@@ -123,6 +124,8 @@ def main():
     output_dim = data["Y"].shape[1]
     models = ["performer", "hyena"] if args.model == "both" else [args.model]
 
+    if args.sd_floor <= 0:
+        raise ValueError("sd_floor must be positive")
     for model_name in models:
         print(f"\n{'=' * 60}\nTraining {model_name.upper()}\n{'=' * 60}")
         common = {
@@ -133,6 +136,7 @@ def main():
             "output_dim": output_dim,
             "epochs": args.epochs,
             "batch_size": args.batch_size,
+            "sd_floor": args.sd_floor,
             "learning_rate": args.lr,
             "seed": args.seed,
         }
@@ -170,6 +174,7 @@ def main():
             mode=args.wandb_mode,
             reinit="finish_previous",
         )
+
 
         try:
             # RESTORED: Actually execute the training function.

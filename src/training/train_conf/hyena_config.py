@@ -28,6 +28,7 @@ class HyenaConfig:
 
     standardize_x: bool = True
     standardize_y: bool = True
+    sd_floor: float = 0.01
 
     seed: int = 42
     device: str = "auto"

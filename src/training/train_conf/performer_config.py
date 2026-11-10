@@ -24,6 +24,7 @@ class PerformerConfig:
 
     val_fraction: float = 0.15
     test_fraction: float = 0.15
+    sd_floor: float = 0.01
 
     standardize_x: bool = True
 
