@@ -10,8 +10,6 @@
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
-set -euo pipefail
-
 # Activate environment
 source /global/home/users/jonathanngai/miniconda3/etc/profile.d/conda.sh
 conda activate spacebio
@@ -47,8 +45,8 @@ srun python -m scripts.attributions \
 python -m scripts.visualize_attributions \
     --input "${OUTPUT_DIR}/${PROTEIN}_ig.npz" \
     --output-dir "$VISUAL_DIR" \
-    --top-genes 50 \
-    --top-samples 100 \
+    --top-genes 5 \
+    --top-samples 25 \
     --sample-ranking mean_abs \
     --format png
 

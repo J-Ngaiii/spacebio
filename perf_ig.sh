@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ig-performer
+#SBATCH --job-name=ig-performer-full
 #SBATCH --account=ic_cdss170fall
 #SBATCH --partition=savio3_gpu
 #SBATCH --nodes=1
@@ -19,13 +19,35 @@ echo "Node: $(hostname)"
 echo "GPU:"
 nvidia-smi
 
-python -m scripts.attributions \
-    --checkpoint data/results/sequence_models/performer_42_20261109-203917/performer.pt \
-    --data data/processed/sequence/harmonized/harmonized_training_intersection.h5ad \
-    --protein TP53 \
-    --output-dir data/results/interpretability/performer_depth3 \
-    --num-samples 128 \
+# Configuration
+PROTEIN=TP53
+MODEL=performer_depth3
+
+CHECKPOINT=data/results/sequence_models/performer_42_20261110-003439.pt
+DATA=data/processed/sequence/harmonized/harmonized_training_intersection.h5ad
+
+OUTPUT_DIR=data/results/interpretability/${MODEL}
+VISUAL_DIR=data/visuals
+
+# Step 1: Compute IG for all eligible test samples
+srun python -m scripts.attributions \
+    --checkpoint "$CHECKPOINT" \
+    --data "$DATA" \
+    --protein "$PROTEIN" \
+    --output-dir "$OUTPUT_DIR" \
+    --all-samples \
     --batch-size 4 \
     --internal-batch-size 8 \
     --n-steps 64 \
     --device cuda
+
+# Step 2: Select top genes, then top samples
+python -m scripts.visualize_attributions \
+    --input "${OUTPUT_DIR}/${PROTEIN}_ig.npz" \
+    --output-dir "$VISUAL_DIR" \
+    --top-genes 5 \
+    --top-samples 25 \
+    --sample-ranking mean_abs \
+    --format png
+
+echo "Attribution computation and visualization complete."
