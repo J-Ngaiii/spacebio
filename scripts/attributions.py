@@ -223,6 +223,10 @@ def main():
     )
 
     parser.add_argument(
+        "--all-samples", action="store_true",
+        help="Use all held-out samples with observed labels for this protein",
+    )
+    parser.add_argument(
         "--num-samples",
         type=int,
         default=32,
@@ -258,6 +262,7 @@ def main():
         args.num_samples < 1
         or args.batch_size < 1
         or args.n_steps < 1
+        or args.internal_batch_size < 1
     ):
         raise ValueError(
             "num-samples, batch-size, and n-steps must be positive"
@@ -380,20 +385,16 @@ def main():
             f"No observed test labels for {args.protein}"
         )
 
-    rng = np.random.default_rng(args.seed)
-
-    n = min(
-        args.num_samples,
-        len(observed_indices),
-    )
-
-    selected_indices = np.sort(
-        rng.choice(
-            observed_indices,
-            size=n,
-            replace=False,
+    if args.all_samples:
+        selected_indices = np.sort(observed_indices)
+    else:
+        rng = np.random.default_rng(args.seed)
+        n = min(args.num_samples, len(observed_indices))
+        selected_indices = np.sort(
+            rng.choice(observed_indices, size=n, replace=False)
         )
-    )
+
+    print(f"Selected {len(selected_indices)} of {len(observed_indices)} eligible test samples")
 
     # --------------------------------------------------
     # 5. Reconstruct standardized model inputs
@@ -481,6 +482,7 @@ def main():
         checkpoint_path=str(args.checkpoint),
         protein_idx=protein_idx,
         baseline="zero_standardized_expression",
+        selection_mode="all_eligible_test" if args.all_samples else "random_eligible_test",
     )
 
     ranking.to_csv(

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ig-performer
+#SBATCH --job-name=ig-hyena-full
 #SBATCH --account=ic_cdss170fall
 #SBATCH --partition=savio3_gpu
 #SBATCH --nodes=1
@@ -10,6 +10,8 @@
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
+set -euo pipefail
+
 # Activate environment
 source /global/home/users/jonathanngai/miniconda3/etc/profile.d/conda.sh
 conda activate spacebio
@@ -19,13 +21,35 @@ echo "Node: $(hostname)"
 echo "GPU:"
 nvidia-smi
 
-python -m scripts.attributions \
-    --checkpoint data/results/sequence_models/hyena_42_20261109-193302/hyena.pt \
-    --data data/processed/sequence/harmonized/harmonized_training_intersection.h5ad \
-    --protein TP53 \
-    --output-dir data/results/interpretability/hyena_depth3 \
-    --num-samples 128 \
+# Configuration
+PROTEIN=TP53
+MODEL=hyena_depth3
+
+CHECKPOINT=data/results/sequence_models/hyena_42_20261109-193302/hyena.pt
+DATA=data/processed/sequence/harmonized/harmonized_training_intersection.h5ad
+
+OUTPUT_DIR=data/results/interpretability/${MODEL}
+VISUAL_DIR=data/visuals
+
+# Step 1: Compute IG for all eligible test samples
+srun python -m scripts.attributions \
+    --checkpoint "$CHECKPOINT" \
+    --data "$DATA" \
+    --protein "$PROTEIN" \
+    --output-dir "$OUTPUT_DIR" \
+    --all-samples \
     --batch-size 4 \
     --internal-batch-size 8 \
     --n-steps 64 \
     --device cuda
+
+# Step 2: Select top genes, then top samples
+python -m scripts.visualize_attributions \
+    --input "${OUTPUT_DIR}/${PROTEIN}_ig.npz" \
+    --output-dir "$VISUAL_DIR" \
+    --top-genes 50 \
+    --top-samples 100 \
+    --sample-ranking mean_abs \
+    --format png
+
+echo "Attribution computation and visualization complete."
