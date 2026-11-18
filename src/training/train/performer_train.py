@@ -76,6 +76,31 @@ def masked_mse(prediction, target):
     return error_sum / count
 
 
+def per_protein_pearson(y_true, y_pred):
+    """Pearson across samples for each protein; ignore missing targets."""
+    correlations = np.full(y_true.shape[1], np.nan, dtype=np.float64)
+    counts = np.zeros(y_true.shape[1], dtype=np.int64)
+    for j in range(y_true.shape[1]):
+        mask = np.isfinite(y_true[:, j]) & np.isfinite(y_pred[:, j])
+        counts[j] = mask.sum()
+        if counts[j] < 3:
+            continue
+        yt = y_true[mask, j].astype(np.float64)
+        yp = y_pred[mask, j].astype(np.float64)
+        yt -= yt.mean()
+        yp -= yp.mean()
+        denom = np.linalg.norm(yt) * np.linalg.norm(yp)
+        if denom > 0:
+            correlations[j] = np.clip(np.dot(yt, yp) / denom, -1, 1)
+    valid = np.isfinite(correlations)
+    summary = {
+        "median_pearson": float(np.median(correlations[valid])) if valid.any() else float("nan"),
+        "mean_pearson": float(np.mean(correlations[valid])) if valid.any() else float("nan"),
+        "n_valid_proteins": int(valid.sum()),
+    }
+    return summary, correlations, counts
+
+
 def train_performer(
     data: dict,
     config: PerformerConfig | None = None,
@@ -424,7 +449,10 @@ def train_performer(
 
         # NEW: Run validation after every epoch.
         # Assumes evaluate() has been updated for masked MSE.
-        val_loss = evaluate(val_loader, return_predictions=False)
+        val_loss, val_predictions = evaluate(val_loader, return_predictions=True)
+        val_pearson = None
+        if cfg.task == "regression":
+            val_pearson, _, _ = per_protein_pearson(Y[val_idx], val_predictions)
 
         epoch_seconds = time.perf_counter() - epoch_start
         elapsed_minutes = (
@@ -435,6 +463,10 @@ def train_performer(
             "epoch": epoch + 1,
             "train_loss": train_loss,
             "val_loss": val_loss,
+            **({"val_median_pearson": val_pearson["median_pearson"],
+                "val_mean_pearson": val_pearson["mean_pearson"],
+                "val_n_valid_proteins": val_pearson["n_valid_proteins"]}
+               if val_pearson is not None else {}),
             "epoch_seconds": epoch_seconds,
         })
 
@@ -443,7 +475,10 @@ def train_performer(
             f"Epoch {epoch + 1:03d}/{cfg.epochs} | "
             f"Train MSE: {train_loss:.5f} | "
             f"Val MSE: {val_loss:.5f} | "
-            f"Time: {epoch_seconds:.1f}s | "
+            + (f"Val median Pearson: {val_pearson['median_pearson']:.4f} | "
+               f"Val mean Pearson: {val_pearson['mean_pearson']:.4f} | "
+               if val_pearson is not None else "")
+            + f"Time: {epoch_seconds:.1f}s | "
             f"Elapsed: {elapsed_minutes:.1f}min"
         )
 
@@ -452,6 +487,10 @@ def train_performer(
                 "epoch": epoch + 1,
                 "train/loss": train_loss,
                 "val/loss": val_loss,
+                **({"val/median_pearson": val_pearson["median_pearson"],
+                    "val/mean_pearson": val_pearson["mean_pearson"],
+                    "val/n_valid_proteins": val_pearson["n_valid_proteins"]}
+                   if val_pearson is not None else {}),
                 "train/learning_rate":
                     optimizer.param_groups[0]["lr"],
                 "train/epoch_seconds": epoch_seconds,
@@ -487,10 +526,16 @@ def train_performer(
         observed = np.isfinite(actual)
         if not observed.any():
             raise ValueError("Test split has no observed protein targets")
+        test_pearson, test_per_protein_r, test_per_protein_n = per_protein_pearson(
+            actual, predictions
+        )
         errors = predictions[observed] - actual[observed]
         metrics = {
             "test_mse": float(np.mean(errors ** 2)),
             "test_mae": float(np.mean(np.abs(errors))),
+            "test_median_pearson": test_pearson["median_pearson"],
+            "test_mean_pearson": test_pearson["mean_pearson"],
+            "test_n_valid_proteins": test_pearson["n_valid_proteins"],
             "test_observed_entries": int(observed.sum()),
             "metadata_columns": metadata_columns,
             "metadata_vocabularies": metadata_vocabularies,
@@ -518,6 +563,21 @@ def train_performer(
     path = run_dir / "performer.pt"
 
     metrics["checkpoint_path"] = str(path)
+
+    if cfg.task == "regression":
+        protein_names = data.get("protein_names")
+        if protein_names is None:
+            protein_names = [f"protein_{j}" for j in range(output_dim)]
+        per_protein_path = run_dir / "test_per_protein_pearson.csv"
+        pd.DataFrame({
+            "protein": list(protein_names),
+            "pearson": test_per_protein_r,
+            "n_observed": test_per_protein_n,
+        }).to_csv(per_protein_path, index=False)
+        print(f"Test median Pearson: {test_pearson['median_pearson']:.4f} "
+              f"({test_pearson['n_valid_proteins']} valid proteins)")
+        print(f"Saved per-protein metrics: {per_protein_path}")
+
 
     if cfg.return_predictions:
         prediction_path = path.with_suffix(".predictions.npz")
