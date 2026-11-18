@@ -26,8 +26,8 @@ MODEL=performer_depth3
 CHECKPOINT=data/results/sequence_models/performer_42_20261110-003439.pt
 DATA=data/space/osdr_gene_protein_intersection_intrain.h5ad
 
-OUTPUT_DIR=data/results/interpretability/${MODEL}
-VISUAL_DIR=data/visuals
+OUTPUT_DIR=data/results/interpretability/${MODEL}/space
+VISUAL_DIR=data/visuals/space
 
 # Step 1: Compute IG for all eligible test samples
 srun python -m scripts.attributions \

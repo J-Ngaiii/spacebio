@@ -26,7 +26,7 @@ MODEL=hyena_depth3
 CHECKPOINT=data/results/sequence_models/hyena_42_20261109-193302/hyena.pt
 DATA=data/space/osdr_gene_protein_intersection_intrain.h5ad
 
-OUTPUT_DIR=data/results/interpretability/${MODEL}
+OUTPUT_DIR=data/results/interpretability/${MODEL}/space
 VISUAL_DIR=data/visuals
 
 # Step 1: Compute IG for all eligible test samples
