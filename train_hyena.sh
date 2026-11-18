@@ -10,6 +10,8 @@
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
+echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
+
 mkdir -p logs
 
 source /global/home/users/jonathanngai/miniconda3/etc/profile.d/conda.sh
