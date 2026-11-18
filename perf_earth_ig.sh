@@ -45,7 +45,7 @@ srun python -m scripts.attributions \
 python -m scripts.visualize_attributions \
     --input "${OUTPUT_DIR}/${PROTEIN}_ig.npz" \
     --output-dir "$VISUAL_DIR" \
-    --top-genes 5 \
+    --top-genes 10 \
     --top-samples 25 \
     --sample-ranking mean_abs \
     --format png
