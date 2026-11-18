@@ -13,6 +13,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True, help="Integrated Gradients .npz file")
     parser.add_argument("--output-dir", type=Path, default=Path("data/visuals"))
+    parser.add_argument("--space-or-earth", type=str, default="earth")
     parser.add_argument("--top-genes", type=int, default=5)
     parser.add_argument("--top-samples", type=int, default=20)
     parser.add_argument("--sample-ranking", choices=("mean_abs", "max_abs"), default="mean_abs")
@@ -76,7 +77,7 @@ def main():
     run_name = args.input.parent.name
     safe_protein = "".join(c if c.isalnum() or c in "-_." else "_" for c in protein)
     prefix = (f"{run_name}_{safe_protein}_top{n_genes}genes_"
-              f"top{n_samples}samples_{args.sample_ranking}")
+              f"top{n_samples}samples_{args.sample_ranking}_{args.space_or_earth}")
     output = args.output_dir / f"{prefix}_ig_heatmap.{args.format}"
     fig.savefig(output, dpi=200, bbox_inches="tight")
     plt.close(fig)

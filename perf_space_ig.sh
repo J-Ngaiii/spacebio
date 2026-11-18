@@ -45,6 +45,7 @@ srun python -m scripts.attributions \
 python -m scripts.visualize_attributions \
     --input "${OUTPUT_DIR}/${PROTEIN}_ig.npz" \
     --output-dir "$VISUAL_DIR" \
+    --space-or-earth "space" \
     --top-genes 10 \
     --top-samples 25 \
     --sample-ranking mean_abs \
