@@ -22,7 +22,7 @@ echo "GPU:"
 nvidia-smi
 
 # Configuration
-PROTEIN=TP53
+PROTEIN=TPM2
 MODEL=hyena_depth3
 
 CHECKPOINT=data/results/sequence_models/hyena_42_20261109-193302/hyena.pt
