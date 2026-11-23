@@ -10,6 +10,8 @@
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
+set -euo pipefail
+
 # Activate environment
 source /global/home/users/jonathanngai/miniconda3/etc/profile.d/conda.sh
 conda activate spacebio

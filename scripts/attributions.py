@@ -223,6 +223,10 @@ def main():
     )
 
     parser.add_argument(
+        "--external-data", action="store_true",
+        help="Evaluate independent dataset rather than checkpoint test split",
+    )
+    parser.add_argument(
         "--all-samples", action="store_true",
         help="Use all held-out samples with observed labels for this protein",
     )
@@ -320,22 +324,15 @@ def main():
     # 3. Reconstruct original held-out test split
     # --------------------------------------------------
 
-    test_indices = np.asarray(
-        checkpoint["split_indices"]["test"]
-    )
-
-    if adata.n_obs != len(checkpoint["sample_ids"]):
-        raise ValueError(
-            "Dataset sample count mismatch"
-        )
-
-    if (
-        adata.obs_names.astype(str).tolist()
-        != list(checkpoint["sample_ids"])
-    ):
-        raise ValueError(
-            "Dataset sample ordering mismatch"
-        )
+    if args.external_data:
+        candidate_indices = np.arange(adata.n_obs)
+        print(f"External dataset: {adata.n_obs} samples", flush=True)
+    else:
+        if adata.n_obs != len(checkpoint["sample_ids"]):
+            raise ValueError("Dataset sample count mismatch; use --external-data for OOD data")
+        if adata.obs_names.astype(str).tolist() != list(checkpoint["sample_ids"]):
+            raise ValueError("Dataset sample ordering mismatch; use --external-data for OOD data")
+        candidate_indices = np.asarray(checkpoint["split_indices"]["test"])
 
     # Validate protein ordering against AnnData.
     protein_features = adata.uns["protein_features"]
@@ -376,13 +373,13 @@ def main():
             "Protein target count mismatch"
         )
 
-    observed_indices = test_indices[
-        np.isfinite(Y[test_indices, protein_idx])
+    observed_indices = candidate_indices[
+        np.isfinite(Y[candidate_indices, protein_idx])
     ]
 
     if len(observed_indices) == 0:
         raise ValueError(
-            f"No observed test labels for {args.protein}"
+            f"No observed labels for {args.protein} in selected dataset"
         )
 
     if args.all_samples:
@@ -394,7 +391,7 @@ def main():
             rng.choice(observed_indices, size=n, replace=False)
         )
 
-    print(f"Selected {len(selected_indices)} of {len(observed_indices)} eligible test samples")
+    print(f"Selected {len(selected_indices)} of {len(observed_indices)} eligible samples")
 
     # --------------------------------------------------
     # 5. Reconstruct standardized model inputs
@@ -473,16 +470,17 @@ def main():
         attributions=attributions,
         convergence_delta=deltas,
         gene_names=np.asarray(gene_names),
-        sample_ids=np.asarray(
-            checkpoint["sample_ids"]
-        )[selected_indices],
+        sample_ids=adata.obs_names.astype(str).to_numpy()[selected_indices],
         sample_indices=selected_indices,
         protein_name=args.protein,
         architecture=architecture,
         checkpoint_path=str(args.checkpoint),
         protein_idx=protein_idx,
         baseline="zero_standardized_expression",
-        selection_mode="all_eligible_test" if args.all_samples else "random_eligible_test",
+        selection_mode=("all_eligible_external" if args.all_samples else "random_eligible_external")
+            if args.external_data else ("all_eligible_test" if args.all_samples else "random_eligible_test"),
+        dataset_path=str(args.data),
+        external_data=args.external_data,
     )
 
     ranking.to_csv(

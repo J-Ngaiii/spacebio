@@ -13,7 +13,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True, help="Integrated Gradients .npz file")
     parser.add_argument("--output-dir", type=Path, default=Path("data/visuals"))
-    parser.add_argument("--space-or-earth", type=str, default="earth")
+    parser.add_argument("--space-or-earth", choices=("space", "earth"), default="earth",
+                        help="Output filename label; does not select the input dataset")
     parser.add_argument("--top-genes", type=int, default=5)
     parser.add_argument("--top-samples", type=int, default=20)
     parser.add_argument("--sample-ranking", choices=("mean_abs", "max_abs"), default="mean_abs")
@@ -29,12 +30,18 @@ def main():
         samples = np.asarray(data["sample_ids"]).astype(str)
         protein = (str(data["protein_name"].item()) if "protein_name" in data
                    else args.input.stem.removesuffix("_ig"))
+        dataset_path = str(data["dataset_path"].item()) if "dataset_path" in data else "unknown"
+        selection_mode = str(data["selection_mode"].item()) if "selection_mode" in data else "unknown"
 
     if A.ndim != 2 or A.shape != (len(samples), len(genes)):
         raise ValueError("Attribution dimensions do not match sample/gene identifiers")
     if not A.size or not np.isfinite(A).all():
         raise ValueError("Attribution matrix is empty or contains nonfinite values")
 
+    print(f"IG source: {args.input}")
+    print(f"Dataset recorded in IG: {dataset_path}")
+    print(f"Selection mode: {selection_mode}")
+    print(f"Sample count: {len(samples)}; gene count: {len(genes)}")
     # Rank genes across ALL available samples before selecting any samples.
     gene_scores = np.mean(np.abs(A), axis=0)
     n_genes = min(args.top_genes, A.shape[1])
@@ -69,12 +76,15 @@ def main():
     ax.set_xlabel("Genes (ranked by mean absolute IG over all samples)")
     ax.set_ylabel(f"Samples (ranked by {args.sample_ranking} IG over selected genes)")
     ax.set_title(f"{protein} protein prediction — Integrated Gradients "
-                 f"({n_samples} of {A.shape[0]} samples; {n_genes} genes)")
+                 f"({n_samples} of {A.shape[0]} samples; {n_genes} genes; {args.space_or_earth})")
     fig.colorbar(im, ax=ax, label="Signed IG attribution", fraction=0.025, pad=0.02)
     fig.tight_layout()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    # Preserve the model run name even when IG results are stored in earth/ or space/.
     run_name = args.input.parent.name
+    if run_name in ("earth", "space"):
+        run_name = args.input.parent.parent.name
     safe_protein = "".join(c if c.isalnum() or c in "-_." else "_" for c in protein)
     prefix = (f"{run_name}_{safe_protein}_top{n_genes}genes_"
               f"top{n_samples}samples_{args.sample_ranking}_{args.space_or_earth}")
@@ -94,7 +104,9 @@ def main():
                         attributions=selected, gene_names=selected_genes,
                         sample_ids=selected_samples, protein_name=protein,
                         original_gene_indices=gene_indices,
-                        original_sample_indices=sample_indices)
+                        original_sample_indices=sample_indices,
+                        dataset_path=dataset_path,
+                        selection_mode=selection_mode)
     print(f"Full IG matrix: {A.shape}; selected heatmap: {selected.shape}")
     print(f"Saved heatmap: {output}")
 
