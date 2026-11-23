@@ -31,7 +31,7 @@ srun python -m scripts.train_sequences \
     --model performer \
     --output-dir data/results/sequence_models \
     --return-predictions \
-    --depth 3 \
+    --depth 5 \
     --epochs 100 \
     --batch-size 16 \
     --sd-floor 0.01 \
