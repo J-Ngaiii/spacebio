@@ -64,31 +64,31 @@ def prepare_data(adata, checkpoint, indices):
     gene_names = list(checkpoint["gene_names"])
     protein_names = list(checkpoint["protein_names"])
 
-    # Match RNA genes to checkpoint ordering.
+    # Keep the checkpoint feature space; unmeasured genes are zero in
+    # standardized coordinates (the training-set mean).
+    if not adata.var_names.is_unique:
+        raise ValueError("Duplicate RNA gene names in dataset")
     gene_index = adata.var_names.get_indexer(gene_names)
+    present = gene_index >= 0
+    if not present.any():
+        raise ValueError("No checkpoint RNA genes found in dataset")
+    print(f"RNA genes present: {present.sum()}/{len(gene_names)}; "
+          f"missing (baseline-imputed): {(~present).sum()}", flush=True)
 
-    if np.any(gene_index < 0):
-        missing = np.asarray(gene_names)[gene_index < 0]
-        raise ValueError(
-            f"Missing checkpoint genes: {missing[:10]}"
-        )
+    X = np.zeros((len(indices), len(gene_names)), dtype=np.float32)
+    X_present = adata.X[indices, :][:, gene_index[present]]
+    if sparse.issparse(X_present):
+        X_present = X_present.toarray()
+    X_present = np.asarray(X_present, dtype=np.float32)
+    if not np.isfinite(X_present).all():
+        raise ValueError("Nonfinite observed RNA inputs")
 
-    X = adata.X[indices, :]
-    X = X[:, gene_index]
-
-    if sparse.issparse(X):
-        X = X.toarray()
-
-    X = np.asarray(X, dtype=np.float32)
-
-    if not np.isfinite(X).all():
-        raise ValueError("Nonfinite RNA inputs")
-
-    # Apply the original training-fitted scaler.
-    x_scaler = checkpoint["x_scaler"]
-
+    x_scaler = checkpoint.get("x_scaler")
     if x_scaler is not None:
-        X = x_scaler.transform(X).astype(np.float32)
+        X_present = (X_present - np.asarray(x_scaler.mean_)[present]) / np.asarray(x_scaler.scale_)[present]
+    X[:, present] = X_present.astype(np.float32)
+    if not np.isfinite(X).all():
+        raise ValueError("Nonfinite standardized RNA inputs")
 
     obs = adata.obs.iloc[indices]
     metadata = {}
@@ -116,7 +116,7 @@ def prepare_data(adata, checkpoint, indices):
             dtype=torch.long,
         )
 
-    return X, metadata, gene_names, protein_names
+    return X, metadata, gene_names, protein_names, present
 
 
 def compute_attributions(
@@ -334,73 +334,40 @@ def main():
             raise ValueError("Dataset sample ordering mismatch; use --external-data for OOD data")
         candidate_indices = np.asarray(checkpoint["split_indices"]["test"])
 
-    # Validate protein ordering against AnnData.
-    protein_features = adata.uns["protein_features"]
-
-    if isinstance(protein_features, dict):
-        if len(protein_features) != 1:
-            raise ValueError(
-                "Ambiguous protein_features dictionary"
-            )
-        data_protein_names = list(
-            next(iter(protein_features.values()))
-        )
+    if args.external_data:
+        # IG does not require measured protein targets on external samples.
+        eligible_indices = candidate_indices
+        print("External IG: no protein-label requirement", flush=True)
     else:
-        data_protein_names = list(protein_features)
+        protein_features = adata.uns["protein_features"]
+        if isinstance(protein_features, dict):
+            if len(protein_features) != 1:
+                raise ValueError("Ambiguous protein_features dictionary")
+            protein_features = next(iter(protein_features.values()))
+        data_protein_names = [str(name) for name in protein_features]
+        if data_protein_names != protein_names:
+            raise ValueError("Protein ordering differs from checkpoint")
+        Y = adata.obsm["protein"]
+        if Y.shape[1] != len(protein_names):
+            raise ValueError("Protein target count mismatch")
+        if sparse.issparse(Y):
+            target = np.asarray(Y[candidate_indices, protein_idx].toarray()).ravel()
+        else:
+            target = np.asarray(Y[candidate_indices, protein_idx]).ravel()
+        eligible_indices = candidate_indices[np.isfinite(target)]
 
-    data_protein_names = [
-        str(name) for name in data_protein_names
-    ]
-
-    if data_protein_names != protein_names:
-        raise ValueError(
-            "Protein ordering differs from checkpoint"
-        )
-
-    # --------------------------------------------------
-    # 4. Select samples with observed protein labels
-    # --------------------------------------------------
-
-    Y = adata.obsm["protein"]
-
-    if sparse.issparse(Y):
-        Y = Y.toarray()
-
-    Y = np.asarray(Y)
-
-    if Y.shape[1] != len(protein_names):
-        raise ValueError(
-            "Protein target count mismatch"
-        )
-
-    observed_indices = candidate_indices[
-        np.isfinite(Y[candidate_indices, protein_idx])
-    ]
-
-    if len(observed_indices) == 0:
-        raise ValueError(
-            f"No observed labels for {args.protein} in selected dataset"
-        )
-
+    if len(eligible_indices) == 0:
+        raise ValueError("No eligible samples")
     if args.all_samples:
-        selected_indices = np.sort(observed_indices)
+        selected_indices = np.sort(eligible_indices)
     else:
         rng = np.random.default_rng(args.seed)
-        n = min(args.num_samples, len(observed_indices))
-        selected_indices = np.sort(
-            rng.choice(observed_indices, size=n, replace=False)
-        )
+        n = min(args.num_samples, len(eligible_indices))
+        selected_indices = np.sort(rng.choice(eligible_indices, size=n, replace=False))
+    print(f"Selected {len(selected_indices)} of {len(eligible_indices)} eligible samples")
 
-    print(f"Selected {len(selected_indices)} of {len(observed_indices)} eligible samples")
-
-    # --------------------------------------------------
-    # 5. Reconstruct standardized model inputs
-    # --------------------------------------------------
-
-    X, metadata, gene_names, _ = prepare_data(
-        adata,
-        checkpoint,
-        selected_indices,
+    X, metadata, gene_names, _, present = prepare_data(
+        adata, checkpoint, selected_indices
     )
 
     print(f"Model: {architecture}")
@@ -438,7 +405,7 @@ def main():
         "gene": gene_names,
         "mean_abs_ig": mean_abs_ig,
         "mean_signed_ig": mean_signed_ig,
-    }).sort_values(
+    })[present].sort_values(
         "mean_abs_ig",
         ascending=False,
     )
@@ -470,6 +437,7 @@ def main():
         attributions=attributions,
         convergence_delta=deltas,
         gene_names=np.asarray(gene_names),
+        gene_present_mask=present,
         sample_ids=adata.obs_names.astype(str).to_numpy()[selected_indices],
         sample_indices=selected_indices,
         protein_name=args.protein,
