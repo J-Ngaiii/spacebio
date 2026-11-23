@@ -35,6 +35,7 @@ srun python -m scripts.attributions \
     --data "$DATA" \
     --protein "$PROTEIN" \
     --output-dir "$OUTPUT_DIR" \
+    --external-data \
     --all-samples \
     --batch-size 4 \
     --internal-batch-size 8 \

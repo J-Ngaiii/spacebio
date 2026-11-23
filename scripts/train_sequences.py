@@ -96,6 +96,7 @@ def main():
     parser.add_argument("--data", type=Path, default=Path("data/processed/sequence/harmonized/harmonized_training_intersection.h5ad"))
     parser.add_argument("--model", choices=("performer", "hyena", "both"), default="performer")
     parser.add_argument("--return-predictions", action="store_true")
+    parser.add_argument("--patience", type=int, default=15)
     parser.add_argument("--depth", type=int, default=1)
     parser.add_argument("--sd-floor", type=float, default=0.01)
     parser.add_argument("--target-key", default="protein")
@@ -131,6 +132,7 @@ def main():
         common = {
             "task": "regression",
             "return_predictions": args.return_predictions,
+            "patience": args.patience, 
             "depth": args.depth,
             "input_dim": input_dim,
             "output_dim": output_dim,
