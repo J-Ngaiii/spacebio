@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=masking-pearson
+#SBATCH --job-name=masking-earth
 #SBATCH --account=ic_cdss170fall
 #SBATCH --partition=savio3_gpu
 #SBATCH --nodes=1
@@ -18,14 +18,21 @@ echo "Job ID: $SLURM_JOB_ID"
 echo "Node: $(hostname)"
 nvidia-smi
 
-# Run from the SpaceBio project root: sbatch scripts/masking_pearson.sh
+# Submit from SpaceBio project root: sbatch scripts/masking_pearson_earth.sh
+# IMPORTANT: Replace this with the EXACT Earth .h5ad used to train the checkpoint.
+# The script validates that sample IDs and order match the checkpoint.
 DATA=data/processed/sequence/harmonized/harmonized_training_intersection.h5ad
 HYENA_CHECKPOINT=data/results/sequence_models/hyena_42_20261109-193302/hyena.pt
-# Set this to the actual Performer checkpoint from your training run.
+# Set to your actual Performer checkpoint before enabling its command.
 PERFORMER_CHECKPOINT=data/results/sequence_models/performer_42_YYYYMMDD-HHMMSS/performer.pt
-OUTPUT_DIR=data/results/masking_pearson
+OUTPUT_DIR=data/results/masking_pearson/earth
 
-# Hyena
+if [[ "$DATA" == REPLACE_WITH_* ]]; then
+    echo "ERROR: Set DATA to the original Earth training .h5ad path before submitting." >&2
+    exit 1
+fi
+
+# Hyena: evaluate original held-out test samples (not the training split).
 srun python -m scripts.masking_pearson \
     --checkpoint "$HYENA_CHECKPOINT" \
     --data "$DATA" \
@@ -37,14 +44,14 @@ srun python -m scripts.masking_pearson \
     --device cuda
 
 # Performer: uncomment after setting PERFORMER_CHECKPOINT above.
-# srun python -m scripts.masking_pearson \
-#     --checkpoint "$PERFORMER_CHECKPOINT" \
-#     --data "$DATA" \
-#     --output-dir "$OUTPUT_DIR/performer" \
-#     --split test \
-#     --percentages 0 10 20 30 50 70 90 \
-#     --batch-size 32 \
-#     --seed 42 \
-#     --device cuda
+srun python -m scripts.masking_pearson \
+    --checkpoint "$PERFORMER_CHECKPOINT" \
+    --data "$DATA" \
+    --output-dir "$OUTPUT_DIR/performer" \
+    --split test \
+    --percentages 0 10 20 30 50 70 90 \
+    --batch-size 32 \
+    --seed 42 \
+    --device cuda
 
-echo "RNA masking evaluation complete."
+echo "Earth RNA masking evaluation complete."

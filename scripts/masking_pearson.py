@@ -43,6 +43,8 @@ def main():
     p.add_argument('--output-dir', type=Path, required=True)
     p.add_argument('--target-key', default='protein')
     p.add_argument('--split', choices=['train', 'val', 'test'], default='test')
+    p.add_argument('--external-data', action='store_true',
+                   help='Evaluate all samples in an independent dataset, ignoring saved split indices')
     p.add_argument('--percentages', nargs='+', type=int, default=[0, 10, 20, 30, 50, 70, 90])
     p.add_argument('--batch-size', type=int, default=32)
     p.add_argument('--seed', type=int, default=42)
@@ -88,15 +90,23 @@ def main():
     if (gene_index < 0).any() or (protein_index < 0).any():
         raise ValueError('Dataset is missing checkpoint genes or proteins')
 
-    saved_ids = checkpoint.get('sample_ids')
-    if saved_ids is None:
-        raise ValueError('Checkpoint sample_ids missing; cannot safely use saved split indices')
-    saved_ids = [str(x) for x in saved_ids]
-    if len(saved_ids) != adata.n_obs or saved_ids != adata.obs_names.astype(str).tolist():
-        raise ValueError('Sample IDs/order differ from checkpoint; refusing to use split indices')
-    idx = np.asarray(checkpoint['split_indices'][args.split], dtype=np.int64)
+    if args.external_data:
+        # External OSDR dataset: saved split indices and sample IDs do not apply.
+        idx = np.arange(adata.n_obs, dtype=np.int64)
+        split_label = 'external'
+    else:
+        saved_ids = checkpoint.get('sample_ids')
+        if saved_ids is None:
+            raise ValueError('Checkpoint sample_ids missing; cannot safely use saved split indices')
+        saved_ids = [str(x) for x in saved_ids]
+        if len(saved_ids) != adata.n_obs or saved_ids != adata.obs_names.astype(str).tolist():
+            raise ValueError('Sample IDs/order differ from checkpoint; use --external-data for OSDR')
+        idx = np.asarray(checkpoint['split_indices'][args.split], dtype=np.int64)
+        split_label = args.split
+
     if len(idx) == 0 or idx.min() < 0 or idx.max() >= adata.n_obs:
-        raise ValueError('Invalid or empty split indices')
+        raise ValueError('Invalid or empty evaluation indices')
+    print(f'Dataset: {args.data} | evaluation: {split_label} | samples: {len(idx)}', flush=True)
 
     # Subset BEFORE densifying; retains exact checkpoint feature order.
     X = adata.X[idx, :][:, gene_index]
@@ -190,12 +200,12 @@ def main():
         for j, name in enumerate(protein_names):
             protein_rows.append({'mask_percent': pct, 'protein': name,
                                  'pearson': r[j], 'n_observed_samples': int(counts[j])})
-        print(f'{architecture} {args.split} | masked={pct:3d}% | '
+        print(f'{architecture} {split_label} | masked={pct:3d}% | '
               f'median={summary_rows[-1]["median_pearson"]:.4f} | '
               f'mean={summary_rows[-1]["mean_pearson"]:.4f} | '
               f'valid_proteins={valid.sum()}', flush=True)
 
-    prefix = f'{architecture}_{args.split}_masking'
+    prefix = f'{architecture}_{split_label}_masking'
     pd.DataFrame(summary_rows).to_csv(args.output_dir / f'{prefix}_summary.csv', index=False)
     pd.DataFrame(protein_rows).to_csv(args.output_dir / f'{prefix}_per_protein.csv', index=False)
     print(f'Saved results to {args.output_dir}', flush=True)
