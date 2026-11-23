@@ -25,7 +25,7 @@ nvidia-smi
 PROTEIN=TPM2
 MODEL=performer_depth3
 
-CHECKPOINT=CHECKPOINT=data/results/sequence_models/performer_42_20261110-003439/performer.pt
+CHECKPOINT=data/results/sequence_models/performer_42_20261110-003439/performer.pt
 DATA=data/space/osdr_gene_protein_intersection_intrain.h5ad
 
 OUTPUT_DIR=data/results/interpretability/${MODEL}/space

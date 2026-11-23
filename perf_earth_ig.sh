@@ -23,7 +23,7 @@ nvidia-smi
 PROTEIN=TPM2
 MODEL=performer_depth3
 
-CHECKPOINT=CHECKPOINT=data/results/sequence_models/performer_42_20261110-003439/performer.pt
+CHECKPOINT=data/results/sequence_models/performer_42_20261110-003439/performer.pt
 DATA=data/processed/sequence/harmonized/harmonized_training_intersection.h5ad
 
 OUTPUT_DIR=data/results/interpretability/${MODEL}/earth
