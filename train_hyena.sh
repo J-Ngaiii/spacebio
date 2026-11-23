@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8          # verify the CPU:GPU ratio for A40 in the Savio docs
 #SBATCH --gres=gpu:A40:1
-#SBATCH --time=03:00:00            # one model, one layer; adjust after a short test run
+#SBATCH --time=08:00:00            # one model, one layer; adjust after a short test run
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
