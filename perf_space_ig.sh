@@ -22,7 +22,7 @@ echo "GPU:"
 nvidia-smi
 
 # Configuration
-PROTEIN=TP53
+PROTEIN=TPM2
 MODEL=performer_depth3
 
 CHECKPOINT=CHECKPOINT=data/results/sequence_models/performer_42_20261110-003439/performer.pt
