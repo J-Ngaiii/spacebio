@@ -36,6 +36,7 @@ srun python -m scripts.train_sequences \
     --batch-size 16 \
     --sd-floor 0.01 \
     --lr 3e-4 \
+    --patience 100 \
     --wandb-project spacebio-sequence-models \
     --wandb-group harmonized-training \
     --wandb-mode online
