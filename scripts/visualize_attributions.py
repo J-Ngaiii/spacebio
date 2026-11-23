@@ -24,7 +24,7 @@ def main():
     if args.top_genes < 1 or args.top_samples < 1:
         parser.error("--top-genes and --top-samples must be positive")
 
-    with np.load(args.input, allow_pickle=False) as data:
+    with np.load(args.input, allow_pickle=True) as data:
         A = np.asarray(data["attributions"], dtype=np.float64)
         genes = np.asarray(data["gene_names"]).astype(str)
         samples = np.asarray(data["sample_ids"]).astype(str)

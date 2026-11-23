@@ -438,7 +438,10 @@ def main():
         convergence_delta=deltas,
         gene_names=np.asarray(gene_names),
         gene_present_mask=present,
-        sample_ids=adata.obs_names.astype(str).to_numpy()[selected_indices],
+        sample_ids=np.asarray(
+            adata.obs_names[selected_indices].tolist(),
+            dtype=str,
+        ),
         sample_indices=selected_indices,
         protein_name=args.protein,
         architecture=architecture,
