@@ -28,6 +28,8 @@ def main():
         A = np.asarray(data["attributions"], dtype=np.float64)
         genes = np.asarray(data["gene_names"]).astype(str)
         samples = np.asarray(data["sample_ids"]).astype(str)
+        present = (np.asarray(data["gene_present_mask"], dtype=bool)
+                   if "gene_present_mask" in data else np.ones(len(genes), dtype=bool))
         protein = (str(data["protein_name"].item()) if "protein_name" in data
                    else args.input.stem.removesuffix("_ig"))
         dataset_path = str(data["dataset_path"].item()) if "dataset_path" in data else "unknown"
@@ -37,6 +39,14 @@ def main():
         raise ValueError("Attribution dimensions do not match sample/gene identifiers")
     if not A.size or not np.isfinite(A).all():
         raise ValueError("Attribution matrix is empty or contains nonfinite values")
+
+    if present.shape != (len(genes),):
+        raise ValueError("Invalid gene_present_mask shape")
+    if not present.any():
+        raise ValueError("No observed genes to visualize")
+    original_gene_indices = np.flatnonzero(present)
+    A = A[:, present]
+    genes = genes[present]
 
     print(f"IG source: {args.input}")
     print(f"Dataset recorded in IG: {dataset_path}")
@@ -94,7 +104,7 @@ def main():
 
     pd.DataFrame({"gene": selected_genes,
                   "mean_abs_ig_all_samples": gene_scores[gene_indices],
-                  "original_gene_index": gene_indices}).to_csv(
+                  "original_gene_index": original_gene_indices[gene_indices]}).to_csv(
                       args.output_dir / f"{prefix}_gene_ranking.csv", index=False)
     pd.DataFrame({"sample_id": selected_samples,
                   "sample_score": sample_scores[sample_indices],
@@ -103,7 +113,7 @@ def main():
     np.savez_compressed(args.output_dir / f"{prefix}_selected_ig.npz",
                         attributions=selected, gene_names=selected_genes,
                         sample_ids=selected_samples, protein_name=protein,
-                        original_gene_indices=gene_indices,
+                        original_gene_indices=original_gene_indices[gene_indices],
                         original_sample_indices=sample_indices,
                         dataset_path=dataset_path,
                         selection_mode=selection_mode)

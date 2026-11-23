@@ -23,8 +23,7 @@ def load_checkpoint(path, device, architecture="auto"):
         if architecture is None:
             folder = path.parent.name.lower()
             architecture = next(
-                (name for name in ("performer", "hyena")
-                 if folder.startswith(name)),
+                (name for name in ("performer", "hyena") if folder.startswith(name)),
                 None,
             )
         if architecture is None:
@@ -41,7 +40,6 @@ def load_checkpoint(path, device, architecture="auto"):
         dropout=cfg["dropout"],
         metadata_cardinalities=checkpoint.get("metadata_cardinalities") or {},
     )
-
     if architecture == "performer":
         model = Performer(**shared, heads=cfg["heads"])
     elif architecture == "hyena":
@@ -55,7 +53,6 @@ def load_checkpoint(path, device, architecture="auto"):
 
     model.load_state_dict(checkpoint["model_state_dict"], strict=True)
     model.to(device).eval()
-
     return model, checkpoint, architecture
 
 
@@ -66,9 +63,6 @@ def prepare_data(adata, checkpoint, indices):
     """
     gene_names = list(checkpoint["gene_names"])
     protein_names = list(checkpoint["protein_names"])
-
-    if not adata.var_names.is_unique:
-        raise ValueError("Dataset contains duplicate gene names")
 
     # Match RNA genes to checkpoint ordering.
     gene_index = adata.var_names.get_indexer(gene_names)
@@ -90,14 +84,11 @@ def prepare_data(adata, checkpoint, indices):
     if not np.isfinite(X).all():
         raise ValueError("Nonfinite RNA inputs")
 
-    # Apply original training-fitted scaler.
+    # Apply the original training-fitted scaler.
     x_scaler = checkpoint["x_scaler"]
 
     if x_scaler is not None:
         X = x_scaler.transform(X).astype(np.float32)
-
-    if not np.isfinite(X).all():
-        raise ValueError("Nonfinite standardized RNA inputs")
 
     obs = adata.obs.iloc[indices]
     metadata = {}
@@ -141,19 +132,23 @@ def compute_attributions(
     """
     Compute Integrated Gradients for one predicted protein.
 
-    Baseline: zero in standardized RNA coordinates,
-    corresponding to training-set mean expression.
+    The baseline is zero in standardized RNA coordinates,
+    corresponding to the training-set mean expression.
 
     Returns:
         attributions: (num_samples, num_genes)
         deltas:       (num_samples,)
     """
+
     metadata_keys = tuple(metadata.keys())
 
+    # Captum expands tensor arguments across interpolation steps.
+    # Pass metadata as individual tensors rather than a dictionary.
     def forward_protein(x, *metadata_tensors):
         metadata_batch = dict(
             zip(metadata_keys, metadata_tensors)
         )
+
         return model(x, metadata_batch)[:, protein_idx]
 
     ig = IntegratedGradients(forward_protein)
@@ -164,7 +159,9 @@ def compute_attributions(
     for start in range(0, len(X), batch_size):
         end = min(start + batch_size, len(X))
 
-        xb = torch.from_numpy(X[start:end]).to(device)
+        xb = torch.from_numpy(
+            X[start:end]
+        ).to(device)
 
         metadata_args = tuple(
             metadata[name][start:end].to(device)
@@ -201,38 +198,67 @@ def compute_attributions(
 
 def main():
     parser = argparse.ArgumentParser(
-        description=(
-            "Compute Integrated Gradients for Performer "
-            "or Hyena protein predictions"
-        )
+        description="Compute Integrated Gradients for Performer or Hyena protein predictions"
+    )
+
+    parser.add_argument("--model", choices=("auto", "performer", "hyena"), default="auto")
+    parser.add_argument(
+        "--checkpoint",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        "--data",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        "--protein",
+        required=True,
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
     )
 
     parser.add_argument(
-        "--model",
-        choices=("auto", "performer", "hyena"),
-        default="auto",
-    )
-    parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--data", type=Path, required=True)
-    parser.add_argument("--protein", required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
-
-    parser.add_argument(
-        "--external-data",
-        action="store_true",
-        help="Evaluate independent dataset instead of checkpoint test split",
+        "--external-data", action="store_true",
+        help="Evaluate independent dataset rather than checkpoint test split",
     )
     parser.add_argument(
-        "--all-samples",
-        action="store_true",
-        help="Use all eligible samples with observed protein labels",
+        "--all-samples", action="store_true",
+        help="Use all held-out samples with observed labels for this protein",
     )
-    parser.add_argument("--num-samples", type=int, default=32)
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--internal-batch-size", type=int, default=16)
-    parser.add_argument("--n-steps", type=int, default=32)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", default="cuda")
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=32,
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=4,
+    )
+    parser.add_argument(
+        "--internal-batch-size",
+        type=int,
+        default=16,
+    )
+    parser.add_argument(
+        "--n-steps",
+        type=int,
+        default=32,
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+    )
+    parser.add_argument(
+        "--device",
+        default="cuda",
+    )
 
     args = parser.parse_args()
 
@@ -242,13 +268,12 @@ def main():
         or args.n_steps < 1
         or args.internal_batch_size < 1
     ):
-        parser.error(
-            "num-samples, batch-size, internal-batch-size, "
-            "and n-steps must be positive"
+        raise ValueError(
+            "num-samples, batch-size, and n-steps must be positive"
         )
 
     if args.internal_batch_size < args.batch_size:
-        parser.error(
+        raise ValueError(
             "internal-batch-size must be >= batch-size"
         )
 
@@ -272,25 +297,22 @@ def main():
     )
 
     # --------------------------------------------------
-    # 2. Load AnnData
+    # 2. Load original AnnData
     # --------------------------------------------------
 
     adata = ad.read_h5ad(args.data)
 
-    protein_names = [
-        str(name) for name in checkpoint["protein_names"]
-    ]
+    protein_names = list(checkpoint["protein_names"])
 
     if args.protein not in protein_names:
         raise ValueError(
-            f"Protein {args.protein!r} not found in checkpoint. "
+            f"Protein {args.protein!r} not found. "
             f"Example proteins: {protein_names[:10]}"
         )
 
-    # Position of the protein in the MODEL output.
     protein_idx = protein_names.index(args.protein)
 
-    # Ensure the model was supervised for this protein.
+    # Ensure the output was supervised during training.
     supported = checkpoint.get("train_supported_proteins")
 
     if supported is not None and not supported[protein_idx]:
@@ -299,44 +321,20 @@ def main():
         )
 
     # --------------------------------------------------
-    # 3. Select candidate samples
+    # 3. Reconstruct original held-out test split
     # --------------------------------------------------
 
     if args.external_data:
-        # External OSDR dataset: use its own sample indices.
         candidate_indices = np.arange(adata.n_obs)
-
-        print(
-            f"External dataset: {adata.n_obs} samples",
-            flush=True,
-        )
-
+        print(f"External dataset: {adata.n_obs} samples", flush=True)
     else:
-        # Original Earth dataset: use checkpoint test split.
         if adata.n_obs != len(checkpoint["sample_ids"]):
-            raise ValueError(
-                "Dataset sample count mismatch; "
-                "use --external-data for OOD data"
-            )
+            raise ValueError("Dataset sample count mismatch; use --external-data for OOD data")
+        if adata.obs_names.astype(str).tolist() != list(checkpoint["sample_ids"]):
+            raise ValueError("Dataset sample ordering mismatch; use --external-data for OOD data")
+        candidate_indices = np.asarray(checkpoint["split_indices"]["test"])
 
-        if (
-            adata.obs_names.astype(str).tolist()
-            != [str(x) for x in checkpoint["sample_ids"]]
-        ):
-            raise ValueError(
-                "Dataset sample ordering mismatch; "
-                "use --external-data for OOD data"
-            )
-
-        candidate_indices = np.asarray(
-            checkpoint["split_indices"]["test"],
-            dtype=np.int64,
-        )
-
-    # --------------------------------------------------
-    # 4. Align protein labels by NAME
-    # --------------------------------------------------
-
+    # Validate protein ordering against AnnData.
     protein_features = adata.uns["protein_features"]
 
     if isinstance(protein_features, dict):
@@ -344,7 +342,6 @@ def main():
             raise ValueError(
                 "Ambiguous protein_features dictionary"
             )
-
         data_protein_names = list(
             next(iter(protein_features.values()))
         )
@@ -355,64 +352,34 @@ def main():
         str(name) for name in data_protein_names
     ]
 
-    if len(set(data_protein_names)) != len(data_protein_names):
+    if data_protein_names != protein_names:
         raise ValueError(
-            "Duplicate protein names in dataset"
+            "Protein ordering differs from checkpoint"
         )
 
-    if args.external_data:
-        # External datasets may have different protein
-        # ordering or a different number of proteins.
-        if args.protein not in data_protein_names:
-            raise ValueError(
-                f"Protein {args.protein!r} "
-                "not found in external dataset"
-            )
-
-        data_protein_idx = data_protein_names.index(args.protein)
-
-    else:
-        # Original training dataset must match checkpoint.
-        if data_protein_names != protein_names:
-            raise ValueError(
-                "Protein ordering differs from checkpoint"
-            )
-
-        data_protein_idx = protein_idx
-
     # --------------------------------------------------
-    # 5. Select samples with observed protein labels
+    # 4. Select samples with observed protein labels
     # --------------------------------------------------
 
     Y = adata.obsm["protein"]
 
-    if Y.shape[0] != adata.n_obs:
-        raise ValueError("Protein sample count mismatch")
+    if sparse.issparse(Y):
+        Y = Y.toarray()
 
-    if Y.shape[1] != len(data_protein_names):
+    Y = np.asarray(Y)
+
+    if Y.shape[1] != len(protein_names):
         raise ValueError(
-            "Protein target count does not match "
-            "dataset protein_features"
+            "Protein target count mismatch"
         )
 
-    # Only read the requested protein column.
-    if sparse.issparse(Y):
-        target_values = np.asarray(
-            Y[candidate_indices, data_protein_idx].toarray()
-        ).ravel()
-    else:
-        target_values = np.asarray(
-            Y[candidate_indices, data_protein_idx]
-        ).ravel()
-
     observed_indices = candidate_indices[
-        np.isfinite(target_values)
+        np.isfinite(Y[candidate_indices, protein_idx])
     ]
 
     if len(observed_indices) == 0:
         raise ValueError(
-            f"No observed labels for {args.protein} "
-            "in selected dataset"
+            f"No observed labels for {args.protein} in selected dataset"
         )
 
     if args.all_samples:
@@ -420,23 +387,14 @@ def main():
     else:
         rng = np.random.default_rng(args.seed)
         n = min(args.num_samples, len(observed_indices))
-
         selected_indices = np.sort(
-            rng.choice(
-                observed_indices,
-                size=n,
-                replace=False,
-            )
+            rng.choice(observed_indices, size=n, replace=False)
         )
 
-    print(
-        f"Selected {len(selected_indices)} of "
-        f"{len(observed_indices)} eligible samples",
-        flush=True,
-    )
+    print(f"Selected {len(selected_indices)} of {len(observed_indices)} eligible samples")
 
     # --------------------------------------------------
-    # 6. Reconstruct standardized model inputs
+    # 5. Reconstruct standardized model inputs
     # --------------------------------------------------
 
     X, metadata, gene_names, _ = prepare_data(
@@ -448,15 +406,14 @@ def main():
     print(f"Model: {architecture}")
     print(f"Depth: {checkpoint['config']['depth']}")
     print(f"Protein: {args.protein}")
-    print(f"Model protein index: {protein_idx}")
-    print(f"Dataset protein index: {data_protein_idx}")
+    print(f"Protein index: {protein_idx}")
     print(f"Samples: {len(X)}")
     print(f"Genes: {X.shape[1]}")
     print(f"Device: {device}")
     print(f"Integration steps: {args.n_steps}")
 
     # --------------------------------------------------
-    # 7. Compute Integrated Gradients
+    # 6. Compute Integrated Gradients
     # --------------------------------------------------
 
     attributions, deltas = compute_attributions(
@@ -471,7 +428,7 @@ def main():
     )
 
     # --------------------------------------------------
-    # 8. Aggregate gene-level importance
+    # 7. Aggregate gene-level importance
     # --------------------------------------------------
 
     mean_abs_ig = np.abs(attributions).mean(axis=0)
@@ -487,7 +444,7 @@ def main():
     )
 
     # --------------------------------------------------
-    # 9. Save outputs
+    # 8. Save outputs
     # --------------------------------------------------
 
     args.output_dir.mkdir(
@@ -500,46 +457,41 @@ def main():
         for c in args.protein
     )
 
-    npz_path = args.output_dir / f"{safe_protein}_ig.npz"
-    csv_path = args.output_dir / f"{safe_protein}_gene_ranking.csv"
+    npz_path = (
+        args.output_dir / f"{safe_protein}_ig.npz"
+    )
 
-    if args.external_data:
-        selection_mode = (
-            "all_eligible_external"
-            if args.all_samples
-            else "random_eligible_external"
-        )
-    else:
-        selection_mode = (
-            "all_eligible_test"
-            if args.all_samples
-            else "random_eligible_test"
-        )
+    csv_path = (
+        args.output_dir / f"{safe_protein}_gene_ranking.csv"
+    )
 
     np.savez_compressed(
         npz_path,
         attributions=attributions,
         convergence_delta=deltas,
         gene_names=np.asarray(gene_names),
-        sample_ids=adata.obs_names.astype(str).to_numpy()[
-            selected_indices
-        ],
+        sample_ids=adata.obs_names.astype(str).to_numpy()[selected_indices],
         sample_indices=selected_indices,
         protein_name=args.protein,
         architecture=architecture,
         checkpoint_path=str(args.checkpoint),
         protein_idx=protein_idx,
-        data_protein_idx=data_protein_idx,
         baseline="zero_standardized_expression",
-        selection_mode=selection_mode,
+        selection_mode=("all_eligible_external" if args.all_samples else "random_eligible_external")
+            if args.external_data else ("all_eligible_test" if args.all_samples else "random_eligible_test"),
         dataset_path=str(args.data),
         external_data=args.external_data,
     )
 
-    ranking.to_csv(csv_path, index=False)
+    ranking.to_csv(
+        csv_path,
+        index=False,
+    )
 
     print("\nTop 20 genes:")
-    print(ranking.head(20).to_string(index=False))
+    print(
+        ranking.head(20).to_string(index=False)
+    )
 
     print(
         "\nMean absolute convergence delta:",
