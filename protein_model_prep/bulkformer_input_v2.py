@@ -208,15 +208,19 @@ print(f'\nintersection: '
 if not common_genes:
     raise SystemExit('empty intersection')
 
-# Report column: share of each sample's 1,000,000 TPM held by the final genes (median).
-# Sources made the same way land close together; one far below the others is off.
+# Report column: share of each sample's 1,000,000 TPM held by the final genes (median),
+# before the rescale below. Low means the source spends much of its TPM on other genes.
 for row in report:
     if row['source'] in src_rna:
         tpm_final = np.power(2.0, src_rna[row['source']].loc[common_genes]) - 1.0
         row['tpm_share_in_final_genes'] = round(
             float(np.median(np.nansum(tpm_final.to_numpy(), axis=0))) / 1e6, 3)
 
-rna_inter = rna_all.loc[common_genes]
+# Rescale each sample to 1,000,000 TPM over the shared genes only (protein-coding; BulkFormer's
+# vocabulary is protein-coding too). Without this, genes a source measures outside the shared
+# set (e.g. small non-coding RNAs in cptac_lscc) shrink its values.
+tpm_inter = np.power(2.0, rna_all.loc[common_genes]) - 1.0
+rna_inter = np.log2(rescale_to_million(tpm_inter) + 1)
 prot_all.index = pd.Index([str(g) for g in prot_all.index], dtype=object)
 
 obs = pd.DataFrame({
@@ -236,7 +240,7 @@ assert not np.isnan(adata.obsm['protein']).all(axis=1).any(), \
 adata.uns['protein_features'] = [str(g) for g in prot_all.index]
 adata.uns['alignment'] = (
     'X: RNA as log2(TPM+1) per source, not z-scored; values below 0 set to 0; '
-    'TPM per sample computed over all genes of that source, then genes intersected. '
+    'genes intersected across sources, then each sample rescaled to 1e6 TPM over the shared genes. '
     + '; '.join(f"{r['source']}: {r['note']}" for r in report if r.get('status') == 'ok'))
 
 dest = Path(args.outdir) / 'harmonized_training_bulkformer.h5ad'
